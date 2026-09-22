@@ -1,7 +1,7 @@
 """The loop. The model picks the next tool call; the code decides when it is over."""
 import json
 import time
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from pathlib import Path
 
 from . import catalog as cat
@@ -72,77 +72,83 @@ def run_task(task, catalog, provider, tools, run_dir, max_turns=24, no_progress=
             tools.results.set_conclusion(best_rid, verdict, reason, missing)
         return finish(verdict, reason, best_rid, missing)
 
-    while final is None:
-        if turns >= max_turns:
-            final = forced("BUDGET_EXHAUSTED", "turns"); break
-        messages = build_messages(task, catalog, tried, last, rejection)
-        try:
-            resp = provider.chat(messages, TOOL_SCHEMAS)
-        except ProviderError:
-            final = forced("BLOCKED", "model_error"); break
-        turns += 1; calls += 1
-        pt += resp["usage"]["prompt_tokens"]; ct += resp["usage"]["completion_tokens"]
-        call = resp.get("tool_call")
-        record = {"turn": turns, "tool": call["name"] if call else None, "args": call["arguments"] if call else resp.get("text")}
-        if not call or not isinstance(call.get("arguments"), dict) or "_unparseable" in call["arguments"]:
-            bad_calls += 1
-            rejection = "reply with exactly one tool call in the tools format"
-            record["error"] = rejection; steps.write(json.dumps(record, ensure_ascii=False) + "\n")
-            if bad_calls >= 3:
-                final = forced("BLOCKED", "bad_call")
-            continue
-        try:
-            result = tools.dispatch(call["name"], call["arguments"])
-            rejection = None
-            tool_errors = 0
-        except ToolError as e:
-            rejection = str(e); result = None
-            if call["name"] not in ("render", "tag_check", "history", "conclude"):
+    def write_step(record):
+        steps.write(json.dumps({"turn": record["turn"], "tool": record["tool"], "args": record["args"],
+                                "result": record.get("result"), "error": record.get("error")}, ensure_ascii=False) + "\n")
+
+    try:
+        while final is None:
+            if turns >= max_turns:
+                final = forced("BUDGET_EXHAUSTED", "turns"); break
+            messages = build_messages(task, catalog, tried, last, rejection)
+            try:
+                resp = provider.chat(messages, TOOL_SCHEMAS)
+            except ProviderError:
+                final = forced("BLOCKED", "model_error"); break
+            turns += 1; calls += 1
+            pt += resp["usage"]["prompt_tokens"]; ct += resp["usage"]["completion_tokens"]
+            call = resp.get("tool_call")
+            record = {"turn": turns, "tool": call["name"] if call else None, "args": call["arguments"] if call else resp.get("text")}
+            if not call or not isinstance(call.get("arguments"), dict) or "_unparseable" in call["arguments"]:
                 bad_calls += 1
+                rejection = "reply with exactly one tool call in the tools format"
+                record["error"] = rejection; write_step(record)
                 if bad_calls >= 3:
-                    record["error"] = rejection; steps.write(json.dumps(record, ensure_ascii=False) + "\n")
-                    final = forced("BLOCKED", "bad_call"); continue
-        except ComfyError as e:
-            tool_errors += 1
-            rejection = f"render failed: {e}"; result = None
-            if tool_errors >= 2:
-                record["error"] = rejection; steps.write(json.dumps(record, ensure_ascii=False) + "\n")
-                final = forced("BLOCKED", "tool_error"); continue
-        record["result"] = result; record["error"] = rejection
-        steps.write(json.dumps(record, ensure_ascii=False) + "\n")
-        last = result
-        if result is None:
-            continue
-        if call["name"] == "render":
-            if call["arguments"].get("claim") == "start" and tried:
-                best_m, stale = None, 0            # restart: new branch, new baseline
-        if call["name"] == "tag_check":
-            row = tools.results.get(result["render_id"])
-            tried.append({"n": row["n"], "claim": row["claim"], "factors": row["factors"],
-                          "scores": row["scores"], "min_score": row["min_score"]})
-            if any(v[0] == "NOT_JUDGEABLE" for v in row["scores"].values()):
-                final = forced("BLOCKED", "not_judgeable"); continue
-            m = row["min_score"]
-            if best_m is None or m >= best_m + epsilon:
-                best_m, stale, best_rid = m, 0, result["render_id"]
-            else:
-                stale += 1
-                if best_rid is None:
-                    best_rid = result["render_id"]
-            if row["all_landed"]:
-                best_rid = result["render_id"]
-            if stale >= no_progress:
-                final = forced("NOT_ACHIEVABLE_HERE", "no_progress"); continue
-        if call["name"] == "conclude":
-            final = finish(result["verdict"], "model", result["render_id"], result["missing"], result["evidence"]); continue
-        if call["name"] == "tag_check" and tools.n_renders >= task.budget and not row["all_landed"]:
-            final = forced("BUDGET_EXHAUSTED", "budget"); continue
-        if call["name"] != "tag_check" and tools.n_renders >= task.budget and tools.last_arm is not None \
-                and tools.results.renders(tools.arm, tools.run, task.id)[-1]["scores"] and \
-                not tools.results.renders(tools.arm, tools.run, task.id)[-1]["all_landed"]:
-            final = forced("BUDGET_EXHAUSTED", "budget"); continue
-    steps.close()
-    _summary(run_dir, task, provider, catalog, tried, final)
+                    final = forced("BLOCKED", "bad_call")
+                continue
+            if call["name"] == "render" and tools.n_renders >= task.budget:
+                rejection = "budget exhausted"
+                record["error"] = rejection; write_step(record)
+                final = forced("BUDGET_EXHAUSTED", "budget"); continue
+            try:
+                result = tools.dispatch(call["name"], call["arguments"])
+                rejection = None
+                tool_errors = 0
+            except ToolError as e:
+                rejection = str(e); result = None
+                tool_errors = 0
+                if call["name"] not in ("render", "tag_check", "history", "conclude"):
+                    bad_calls += 1
+                    if bad_calls >= 3:
+                        record["error"] = rejection; write_step(record)
+                        final = forced("BLOCKED", "bad_call"); continue
+            except ComfyError as e:
+                tool_errors += 1
+                rejection = f"render failed: {e}"; result = None
+                if tool_errors >= 2:
+                    record["error"] = rejection; write_step(record)
+                    final = forced("BLOCKED", "tool_error"); continue
+            record["result"] = result; record["error"] = rejection
+            write_step(record)
+            last = result
+            if result is None:
+                continue
+            if call["name"] == "render":
+                if call["arguments"].get("claim") == "start" and tried:
+                    best_m, stale = None, 0            # restart: new branch, new baseline
+            if call["name"] == "tag_check":
+                row = tools.results.get(result["render_id"])
+                tried.append({"n": row["n"], "claim": row["claim"], "factors": row["factors"],
+                              "scores": row["scores"], "min_score": row["min_score"]})
+                if any(v[0] == "NOT_JUDGEABLE" for v in row["scores"].values()):
+                    final = forced("BLOCKED", "not_judgeable"); continue
+                m = row["min_score"]
+                if best_m is None or m >= best_m + epsilon:
+                    best_m, stale, best_rid = m, 0, result["render_id"]
+                else:
+                    stale += 1
+                    if best_rid is None:
+                        best_rid = result["render_id"]
+                if stale >= no_progress:
+                    final = forced("NOT_ACHIEVABLE_HERE", "no_progress"); continue
+            if call["name"] == "conclude":
+                final = finish(result["verdict"], "model", result["render_id"], result["missing"], result["evidence"]); continue
+            if call["name"] == "tag_check" and tools.n_renders >= task.budget and not row["all_landed"]:
+                final = forced("BUDGET_EXHAUSTED", "budget"); continue
+    finally:
+        steps.close()
+        if final is not None:
+            _summary(run_dir, task, provider, catalog, tried, final)
     return final
 
 

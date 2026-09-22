@@ -125,3 +125,34 @@ def test_restart_resets_no_progress_counter(make, tmp_path):
     # 前三张 0.10 会触发「不涨」计数到 2（第 1 张是基准），restart 后清零，所以能走到第 5 张
     out = lp.run_task(task, tools.catalog, prov, tools, tmp_path / "run")
     assert out.verdict == "ACHIEVED" and out.renders == 5
+
+
+def test_best_render_tracked_by_min_score_not_all_landed_override(make, tmp_path):
+    task, prov, tools = make([0.90, 0.40, 0.40, 0.40], [
+        render_call(1001, "start"), tc("tag_check", render_id="agent-deepseek-1-7-01"),
+        render_call(1002, "knob:seed"), tc("tag_check", render_id="agent-deepseek-1-7-02"),
+        render_call(1003, "knob:seed"), tc("tag_check", render_id="agent-deepseek-1-7-03"),
+        render_call(1004, "knob:seed"), tc("tag_check", render_id="agent-deepseek-1-7-04")])
+    out = lp.run_task(task, tools.catalog, prov, tools, tmp_path / "run")
+    assert out.verdict == "NOT_ACHIEVABLE_HERE" and out.stop_reason == "no_progress"
+    assert out.render_id == "agent-deepseek-1-7-01"
+    assert "0.90" in out.missing
+
+
+def test_budget_enforced_before_render_dispatch(make, tmp_path):
+    task, prov, tools = make([0.1], [render_call(1001, "start"), render_call(1002, "knob:seed")], budget=1)
+    out = lp.run_task(task, tools.catalog, prov, tools, tmp_path / "run")
+    assert out.verdict == "BUDGET_EXHAUSTED" and out.stop_reason == "budget" and out.renders == 1
+
+
+def test_tool_error_streak_resets_on_intervening_tool_error(make, tmp_path):
+    bad_base = {"tool_call": {"name": "render", "arguments": {"workflow": "sdxl", "base": "not-a-real-base.safetensors",
+                "loras": [], "tags": [{"tag": "1girl"}, {"tag": "on side"}], "seed": 1002, "cfg": 6.0, "steps": 30, "claim": "start"}}}
+    task, prov, tools = make([0.9], [
+        render_call(1001, "start"), bad_base, render_call(1001, "start"), render_call(1001, "start"),
+        tc("tag_check", render_id="agent-deepseek-1-7-01"),
+        tc("conclude", verdict="ACHIEVED", render_id="agent-deepseek-1-7-01", missing="")],
+        comfy=FakeComfy(fail_times=2))
+    out = lp.run_task(task, tools.catalog, prov, tools, tmp_path / "run")
+    assert not (out.verdict == "BLOCKED" and out.stop_reason == "tool_error")
+    assert out.verdict == "ACHIEVED"
