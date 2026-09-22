@@ -1,0 +1,25 @@
+[project]
+name = "comfy-agent"
+version = "0.1.0"
+description = "Given required danbooru tags, pick a ComfyUI workflow, base and LoRA, turn one knob per render, judge with a deterministic tagger."
+requires-python = ">=3.11"
+dependencies = [
+  "tagassert==0.1.0",
+  "attribution-gate==0.1.0",
+  "renderdb==0.1.0",
+  "openai>=1.40",
+  "pyyaml>=6",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["comfy_agent*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

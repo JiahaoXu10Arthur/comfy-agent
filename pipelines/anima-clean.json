@@ -1,0 +1,115 @@
+{
+ "unet": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "miaomiaoHarem_anima16.safetensors",
+   "weight_dtype": "default"
+  }
+ },
+ "clip": {
+  "class_type": "CLIPLoader",
+  "inputs": {
+   "clip_name": "qwen_3_06b_base.safetensors",
+   "type": "stable_diffusion",
+   "device": "default"
+  }
+ },
+ "vae": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "qwen_image_vae.safetensors"
+  }
+ },
+ "lora": {
+  "class_type": "LoRA Text Loader (LoraManager)",
+  "inputs": {
+   "model": [
+    "unet",
+    0
+   ],
+   "clip": [
+    "clip",
+    0
+   ],
+   "lora_syntax": ""
+  }
+ },
+ "pos": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "text": "",
+   "clip": [
+    "lora",
+    1
+   ]
+  }
+ },
+ "neg": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "text": "worst quality,low quality,score_1,score_2,score_3,artist name,blurry,jpeg artifacts,lowres,censor, 4 toes\uff0c6 toes\uff0c\ncropped image,bad anatomy, bad proportions, deformed anatomy, deformed face, deformed eyes, multiple fingers, extra fingers, bad feet, extra toes, less toes, extra legs,  extra feet,",
+   "clip": [
+    "lora",
+    1
+   ]
+  }
+ },
+ "latent": {
+  "class_type": "EmptyLatentImage",
+  "inputs": {
+   "width": 1024,
+   "height": 1024,
+   "batch_size": 1
+  }
+ },
+ "ks": {
+  "class_type": "KSampler",
+  "inputs": {
+   "seed": 0,
+   "steps": 30,
+   "cfg": 5.0,
+   "sampler_name": "euler_ancestral",
+   "scheduler": "normal",
+   "denoise": 1.0,
+   "model": [
+    "lora",
+    0
+   ],
+   "positive": [
+    "pos",
+    0
+   ],
+   "negative": [
+    "neg",
+    0
+   ],
+   "latent_image": [
+    "latent",
+    0
+   ]
+  }
+ },
+ "vaed": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "ks",
+    0
+   ],
+   "vae": [
+    "vae",
+    0
+   ]
+  }
+ },
+ "save": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "filename_prefix": "Anima/clean",
+   "images": [
+    "vaed",
+    0
+   ]
+  }
+ }
+}

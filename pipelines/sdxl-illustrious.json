@@ -1,0 +1,110 @@
+{
+ "ckpt": {
+  "class_type": "CheckpointLoaderSimple",
+  "inputs": {
+   "ckpt_name": "ChenkinNoob-XL-V0.5.safetensors"
+  }
+ },
+ "clipskip": {
+  "class_type": "CLIPSetLastLayer",
+  "inputs": {
+   "clip": [
+    "ckpt",
+    1
+   ],
+   "stop_at_clip_layer": -2
+  }
+ },
+ "lora": {
+  "class_type": "LoRA Text Loader (LoraManager)",
+  "inputs": {
+   "model": [
+    "ckpt",
+    0
+   ],
+   "clip": [
+    "clipskip",
+    0
+   ],
+   "lora_syntax": ""
+  }
+ },
+ "pos": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "text": "",
+   "clip": [
+    "lora",
+    1
+   ]
+  }
+ },
+ "neg": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "text": "bad quality, worst quality, worst detail, lowres, bad anatomy, bad hands, sketch, jpeg artifacts, signature, watermark, artist name, censored, mosaic censoring",
+   "clip": [
+    "lora",
+    1
+   ]
+  }
+ },
+ "latent": {
+  "class_type": "EmptyLatentImage",
+  "inputs": {
+   "width": 1024,
+   "height": 1024,
+   "batch_size": 1
+  }
+ },
+ "ks": {
+  "class_type": "KSampler",
+  "inputs": {
+   "seed": 0,
+   "steps": 30,
+   "cfg": 6.0,
+   "sampler_name": "euler_ancestral",
+   "scheduler": "normal",
+   "denoise": 1.0,
+   "model": [
+    "lora",
+    0
+   ],
+   "positive": [
+    "pos",
+    0
+   ],
+   "negative": [
+    "neg",
+    0
+   ],
+   "latent_image": [
+    "latent",
+    0
+   ]
+  }
+ },
+ "vaed": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "ks",
+    0
+   ],
+   "vae": [
+    "ckpt",
+    2
+   ]
+  }
+ },
+ "save": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "filename_prefix": "SDXL/illu",
+   "images": [
+    "vaed",
+    0
+   ]
+  }
+ }
+}
