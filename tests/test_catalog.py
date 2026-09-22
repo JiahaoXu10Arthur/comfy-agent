@@ -55,6 +55,21 @@ def test_build_rejects_over_limit(tmp_path, monkeypatch):
         c.build(tmp_path, WORKFLOWS, "t", "v", 0.35)
 
 
+def test_non_dict_usage_tips_defaults_to_strength_1(tmp_path):
+    meta(tmp_path, "weird", usage_tips=json.dumps(["not", "a", "dict"]))
+    cat = c.build(tmp_path, WORKFLOWS, "t", "v", 0.35)
+    assert cat["loras"][0]["strength"] == 1.0
+
+
+def test_kind_is_first_comma_separated_tag_stripped(tmp_path):
+    meta(tmp_path, "str_tags", tags="concept:foot, concept:detail")
+    meta(tmp_path, "list_tags", tags=["char:x", "style:y"])
+    cat = c.build(tmp_path, WORKFLOWS, "t", "v", 0.35)
+    kinds = {l["file"]: l["kind"] for l in cat["loras"]}
+    assert kinds["str_tags"] == "concept:foot"
+    assert kinds["list_tags"] == "char:x"
+
+
 def test_match_lora_per_workflow_first_by_order_and_skips_empty_trigger(catalog_dict):
     m = c.match_lora(catalog_dict, "sdxl", ["1girl", "emilia (re:zero)", "white dress"])
     assert m["file"] == "Emilia-all outfits-illu"

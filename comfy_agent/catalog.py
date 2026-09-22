@@ -30,11 +30,15 @@ def read_metadata(path):
     words = civ.get("trainedWords") or ""
     trigger = [w.strip() for w in words.split(",") if w.strip()]
     try:
-        strength = float(json.loads(d.get("usage_tips") or "{}").get("strength", 1.0))
+        parsed = json.loads(d.get("usage_tips") or "{}")
+        strength = float(parsed.get("strength", 1.0)) if isinstance(parsed, dict) else 1.0
     except (ValueError, TypeError):
         strength = 1.0
     tags = d.get("tags") or []
-    kind = tags if isinstance(tags, str) else (tags[0] if tags else "")
+    if isinstance(tags, str):
+        kind = tags.split(",")[0].strip()
+    else:
+        kind = tags[0].strip() if tags else ""
     return {"file": name, "workflow": wf, "trigger": trigger, "strength": strength, "kind": kind}
 
 
