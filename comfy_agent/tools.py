@@ -52,8 +52,12 @@ class Tools:
             wf = cat.workflow(self.catalog, args["workflow"])
         except KeyError:
             raise ToolError(f"unknown workflow {args.get('workflow')!r}")
-        if args["base"] not in wf["bases"]:
-            raise ToolError(f"base {args['base']!r} not in catalog for {wf['name']}: {wf['bases']}")
+        try:
+            base = args["base"]
+        except KeyError as e:
+            raise ToolError(f"bad render arguments: {e}") from e
+        if base not in wf["bases"]:
+            raise ToolError(f"base {base!r} not in catalog for {wf['name']}: {wf['bases']}")
         try:
             arm = factors.arm_from_call(args)
         except (KeyError, TypeError, ValueError) as e:
@@ -61,9 +65,12 @@ class Tools:
         c = factors.check(self.last_arm, arm, args.get("claim", ""), self.catalog, self.vocabulary)
         if not c.ok:
             raise ToolError(f"single_factor rejected: {c.reason}")
+        catalog_loras = {l["file"]: l for l in self.catalog["loras"] if l["workflow"] == wf["name"]}
         triggers = []
         for f, _ in arm.loras:
-            entry = next(l for l in self.catalog["loras"] if l["file"] == f)
+            entry = catalog_loras.get(f)
+            if entry is None:
+                raise ToolError(f"LoRA {f!r} is not in the catalog for workflow {wf['name']}")
             triggers += entry["trigger"]
         # trigger 已在 tags 里的不重复
         tag_names = {t for t, _ in arm.tags}

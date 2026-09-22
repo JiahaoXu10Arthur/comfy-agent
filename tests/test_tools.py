@@ -87,3 +87,14 @@ def test_history_excludes_own_task(tools):
 def test_dispatch_unknown_tool(tools):
     with pytest.raises(tl.ToolError):
         tools.dispatch("paint", {})
+
+
+def test_render_missing_arguments_is_tool_error(tools):
+    with pytest.raises(tl.ToolError):
+        tools.render({"workflow": "sdxl"})
+
+
+def test_render_unknown_lora_is_tool_error(tools):
+    with pytest.raises(tl.ToolError, match="nope"):
+        tools.render(call(loras=[{"file": "nope", "strength": 1.0}]))
+    assert tools._comfy.graphs == []
