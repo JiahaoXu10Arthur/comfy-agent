@@ -47,3 +47,16 @@ def catalog_path(tmp_path, catalog_dict):
     p = tmp_path / "catalog.yaml"
     p.write_text(yaml.safe_dump(catalog_dict, allow_unicode=True, sort_keys=False), encoding="utf-8")
     return p
+
+
+class ScriptedProvider:
+    """Returns canned chat() results in order; records what it was asked."""
+    def __init__(self, responses):
+        self.responses, self.seen = list(responses), []
+        self.name = "scripted"
+
+    def chat(self, messages, tools):
+        self.seen.append(messages)
+        r = self.responses.pop(0)
+        return {"tool_call": r.get("tool_call"), "text": r.get("text", ""),
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1}, "raw": {}}
