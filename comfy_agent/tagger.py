@@ -18,4 +18,4 @@ class Tagger:
         for r in v.results:
             score = 0.0 if r.verdict == NOT_JUDGEABLE or r.score is None else float(r.score)
             out[r.tag] = (r.verdict, score)
-        return {m: out[normalise(m)] for m in must}
+        return {m: out.get(normalise(m), ("NOT_JUDGEABLE", 0.0)) for m in must}

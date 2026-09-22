@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
-from tagassert import judgeable
+from tagassert import judgeable, normalise, STRUCTURAL_EXCLUSIONS
 from tagassert.__main__ import read_vocabulary
 
 CATEGORIES = ("single", "multi", "count", "pose", "character")
@@ -39,6 +39,9 @@ def load_task(path, vocabulary):
         raise TaskLintError(f"{path}: must must be a list of tags")
     if not must:
         raise TaskLintError(f"{path}: must is empty")
+    rating = [tag for tag in must if normalise(tag) in STRUCTURAL_EXCLUSIONS]
+    if rating:
+        raise TaskLintError(f"{path}: rating tags cannot be required: {rating}")
     bad = [tag for tag in must if not judgeable(tag, vocabulary)]
     if bad:
         raise TaskLintError(f"{path}: not judgeable by this tagger: {bad}")

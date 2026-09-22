@@ -31,3 +31,11 @@ def test_judge_keys_output_by_the_original_must_string(vocab_path):
     out = t.judge("x.png", ["1girl", "On_Side"])
     assert out["On_Side"] == ("MISSING", 0.12)
     assert "on side" not in out
+
+
+def test_judge_structural_exclusion_is_not_judgeable(vocab_path):
+    v = load_vocabulary(vocab_path)
+    t = Tagger(FakeBackend({"1girl": 0.99}), 0.35, v)
+    out = t.judge("x.png", ["1girl", "sensitive"])
+    assert out["sensitive"] == ("NOT_JUDGEABLE", 0.0)
+    assert out["1girl"] == ("LANDED", 0.99)
