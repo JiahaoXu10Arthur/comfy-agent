@@ -44,6 +44,8 @@ class Provider:
         cached = self.cassette.get(key)
         if cached is not None:
             return cached
+        if self.cassette.mode == "replay":
+            raise ProviderError(f"cassette miss in replay mode: {key[:12]}")
         delay = 1
         for attempt in range(4):
             try:

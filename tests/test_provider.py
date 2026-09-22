@@ -72,3 +72,32 @@ def test_cassette_replays_without_calling_model(tmp_path):
     p2 = make([], pv.Cassette(tmp_path, "replay"))
     assert p2.chat(msgs, [])["text"] == "first"
     assert p2.client.chat.completions.calls == 0
+
+
+def test_cassette_replay_miss_raises_without_calling_model(tmp_path):
+    cas = pv.Cassette(tmp_path, "replay")
+    p = make([], cas)
+    with pytest.raises(pv.ProviderError):
+        p.chat([{"role": "user", "content": "q"}], [])
+    assert p.client.chat.completions.calls == 0
+
+
+def test_from_env_deepseek(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "k")
+    p = pv.from_env("deepseek")
+    assert p.model == "deepseek-chat"
+    assert p.name == "deepseek"
+    assert str(p.client.base_url).startswith("https://api.deepseek.com")
+
+
+def test_from_env_qwen():
+    p = pv.from_env("qwen")
+    assert p.model == "qwen3.5:27b"
+    assert str(p.client.base_url).startswith("http://127.0.0.1:11434")
+
+
+def test_chat_handles_unparseable_tool_arguments():
+    call = type("Call", (), {"function": type("F", (), {"name": "render", "arguments": "{not json"})()})()
+    p = make([Resp(Msg(tool_calls=[call]))])
+    out = p.chat([], [])
+    assert out["tool_call"]["arguments"] == {"_unparseable": "{not json"}
