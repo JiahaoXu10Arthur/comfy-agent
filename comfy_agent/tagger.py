@@ -1,5 +1,5 @@
 """tagassert with the backend and threshold pinned by the catalog."""
-from tagassert import compare, NOT_JUDGEABLE
+from tagassert import compare, normalise, NOT_JUDGEABLE
 from tagassert.backends import ComfyTagger
 
 
@@ -18,4 +18,4 @@ class Tagger:
         for r in v.results:
             score = 0.0 if r.verdict == NOT_JUDGEABLE or r.score is None else float(r.score)
             out[r.tag] = (r.verdict, score)
-        return out
+        return {m: out[normalise(m)] for m in must}

@@ -23,3 +23,11 @@ def test_judge_missing_tag_not_in_output_is_missing_with_zero(vocab_path):
     v = load_vocabulary(vocab_path)
     t = Tagger(FakeBackend({"1girl": 0.99}), 0.35, v)
     assert t.judge("x.png", ["1girl", "smile"])["smile"] == ("MISSING", 0.0)
+
+
+def test_judge_keys_output_by_the_original_must_string(vocab_path):
+    v = load_vocabulary(vocab_path)
+    t = Tagger(FakeBackend({"1girl": 0.99, "on_side": 0.12}), 0.35, v)
+    out = t.judge("x.png", ["1girl", "On_Side"])
+    assert out["On_Side"] == ("MISSING", 0.12)
+    assert "on side" not in out
