@@ -1,0 +1,162 @@
+"""The loop. The model picks the next tool call; the code decides when it is over."""
+import json
+import time
+from dataclasses import dataclass, asdict
+from pathlib import Path
+
+from . import catalog as cat
+from .comfy import ComfyError
+from .provider import ProviderError
+from .tools import TOOL_SCHEMAS, ToolError
+
+STOP_REASONS = ("model", "budget", "turns", "no_progress", "not_judgeable", "tool_error", "model_error", "bad_call")
+
+SYSTEM_PROMPT = """You drive a ComfyUI image pipeline to make every required tag appear in one render.
+You never see images. You see the tagger's per-tag score (0-1, threshold {threshold}) for each render.
+Rules the code enforces: one factor per render (say which in claim); switching workflow or base is a restart;
+conclude ACHIEVED only with a render whose tags all LANDED; NOT_ACHIEVABLE_HERE must say what the catalog lacks.
+Budget: {budget} renders. Prefer the cheapest change that could move the lowest-scoring tag. Call one tool per turn."""
+
+
+@dataclass
+class Outcome:
+    verdict: str
+    stop_reason: str
+    render_id: str | None
+    missing: str
+    evidence: str
+    renders: int
+    turns: int
+    calls: int
+    prompt_tokens: int
+    completion_tokens: int
+    seconds: float
+
+
+def build_messages(task, catalog, tried, last, rejection):
+    sys_msg = SYSTEM_PROMPT.format(threshold=catalog["threshold"], budget=task.budget)
+    wfs = "\n".join(f"{w['name']}: bases {w['bases']}; defaults {w['defaults']}" for w in catalog["workflows"])
+    table = "\n".join(f"{t['n']:02d} | {t['claim']} | {' '.join(t['factors'])} | "
+                      f"{' '.join(f'{k}={v[1]:.2f}{'' if v[0]=='LANDED' else '!'}' for k, v in t['scores'].items())} | min {t['min_score']}"
+                      for t in tried) or "(none yet)"
+    user = (f"Task {task.id} ({task.category}). must: {', '.join(task.must)}. budget {task.budget}, used {len(tried)}.\n"
+            f"Workflows:\n{wfs}\nLoRAs (file | workflow | trigger | kind):\n{cat.for_model(catalog)}\n"
+            f"Tried so far (n | claim | factors | scores, ! = MISSING | min):\n{table}\n")
+    if last is not None:
+        user += f"Last tool result: {json.dumps(last, ensure_ascii=False)}\n"
+    if rejection:
+        user += f"Your last call was rejected: {rejection}\n"
+    return [{"role": "system", "content": sys_msg}, {"role": "user", "content": user}]
+
+
+def run_task(task, catalog, provider, tools, run_dir, max_turns=24, no_progress=3, epsilon=0.02):
+    run_dir = Path(run_dir); run_dir.mkdir(parents=True, exist_ok=True)
+    steps = open(run_dir / "steps.jsonl", "w", encoding="utf-8")
+    t0 = time.time()
+    tried, last, rejection = [], None, None
+    turns = calls = pt = ct = 0
+    bad_calls = tool_errors = 0
+    best_m, stale, best_rid = None, 0, None
+    final = None
+
+    def finish(verdict, reason, rid, missing, evidence=""):
+        return Outcome(verdict, reason, rid, missing, evidence, tools.n_renders, turns, calls, pt, ct, round(time.time() - t0, 1))
+
+    def forced(verdict, reason):
+        row = tools.results.get(best_rid) if best_rid else None
+        missing = ""
+        if verdict == "NOT_ACHIEVABLE_HERE" and row:
+            tag = min(row["scores"], key=lambda k: row["scores"][k][1])
+            missing = f"最低分 tag {tag} 最高 {row['scores'][tag][1]:.2f}（render {best_rid}）"
+        if row:
+            tools.results.set_conclusion(best_rid, verdict, reason, missing)
+        return finish(verdict, reason, best_rid, missing)
+
+    while final is None:
+        if turns >= max_turns:
+            final = forced("BUDGET_EXHAUSTED", "turns"); break
+        messages = build_messages(task, catalog, tried, last, rejection)
+        try:
+            resp = provider.chat(messages, TOOL_SCHEMAS)
+        except ProviderError:
+            final = forced("BLOCKED", "model_error"); break
+        turns += 1; calls += 1
+        pt += resp["usage"]["prompt_tokens"]; ct += resp["usage"]["completion_tokens"]
+        call = resp.get("tool_call")
+        record = {"turn": turns, "tool": call["name"] if call else None, "args": call["arguments"] if call else resp.get("text")}
+        if not call or not isinstance(call.get("arguments"), dict) or "_unparseable" in call["arguments"]:
+            bad_calls += 1
+            rejection = "reply with exactly one tool call in the tools format"
+            record["error"] = rejection; steps.write(json.dumps(record, ensure_ascii=False) + "\n")
+            if bad_calls >= 3:
+                final = forced("BLOCKED", "bad_call")
+            continue
+        try:
+            result = tools.dispatch(call["name"], call["arguments"])
+            rejection = None
+            tool_errors = 0
+        except ToolError as e:
+            rejection = str(e); result = None
+            if call["name"] not in ("render", "tag_check", "history", "conclude"):
+                bad_calls += 1
+                if bad_calls >= 3:
+                    record["error"] = rejection; steps.write(json.dumps(record, ensure_ascii=False) + "\n")
+                    final = forced("BLOCKED", "bad_call"); continue
+        except ComfyError as e:
+            tool_errors += 1
+            rejection = f"render failed: {e}"; result = None
+            if tool_errors >= 2:
+                record["error"] = rejection; steps.write(json.dumps(record, ensure_ascii=False) + "\n")
+                final = forced("BLOCKED", "tool_error"); continue
+        record["result"] = result; record["error"] = rejection
+        steps.write(json.dumps(record, ensure_ascii=False) + "\n")
+        last = result
+        if result is None:
+            continue
+        if call["name"] == "render":
+            if call["arguments"].get("claim") == "start" and tried:
+                best_m, stale = None, 0            # restart: new branch, new baseline
+        if call["name"] == "tag_check":
+            row = tools.results.get(result["render_id"])
+            tried.append({"n": row["n"], "claim": row["claim"], "factors": row["factors"],
+                          "scores": row["scores"], "min_score": row["min_score"]})
+            if any(v[0] == "NOT_JUDGEABLE" for v in row["scores"].values()):
+                final = forced("BLOCKED", "not_judgeable"); continue
+            m = row["min_score"]
+            if best_m is None or m >= best_m + epsilon:
+                best_m, stale, best_rid = m, 0, result["render_id"]
+            else:
+                stale += 1
+                if best_rid is None:
+                    best_rid = result["render_id"]
+            if row["all_landed"]:
+                best_rid = result["render_id"]
+            if stale >= no_progress:
+                final = forced("NOT_ACHIEVABLE_HERE", "no_progress"); continue
+        if call["name"] == "conclude":
+            final = finish(result["verdict"], "model", result["render_id"], result["missing"], result["evidence"]); continue
+        if call["name"] == "tag_check" and tools.n_renders >= task.budget and not row["all_landed"]:
+            final = forced("BUDGET_EXHAUSTED", "budget"); continue
+        if call["name"] != "tag_check" and tools.n_renders >= task.budget and tools.last_arm is not None \
+                and tools.results.renders(tools.arm, tools.run, task.id)[-1]["scores"] and \
+                not tools.results.renders(tools.arm, tools.run, task.id)[-1]["all_landed"]:
+            final = forced("BUDGET_EXHAUSTED", "budget"); continue
+    steps.close()
+    _summary(run_dir, task, provider, catalog, tried, final)
+    return final
+
+
+def _summary(run_dir, task, provider, catalog, tried, out):
+    lines = [f"task {task.id}   must: {', '.join(task.must)}   budget {task.budget}",
+             f"model {getattr(provider, 'name', '?')}   tagger {catalog['tagger']} @{catalog['threshold']}", "",
+             "#  | claim | factors | scores (! = MISSING) | min"]
+    for t in tried:
+        sc = " ".join(f"{k}={v[1]:.2f}{'' if v[0]=='LANDED' else '!'}" for k, v in t["scores"].items())
+        lines.append(f"{t['n']:02d} | {t['claim']} | {' '.join(t['factors'])} | {sc} | {t['min_score']}")
+    lines += ["", f"结论 {out.verdict} @ {out.render_id}（stop_reason {out.stop_reason}），{out.renders} 张，model 调用 {out.calls} 次，"
+              f"{out.prompt_tokens}+{out.completion_tokens} tokens，{out.seconds} 秒"]
+    if out.evidence:
+        lines.append(f"证据（代码回查）：{out.evidence}")
+    if out.missing:
+        lines.append(f"缺什么：{out.missing}")
+    (Path(run_dir) / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
