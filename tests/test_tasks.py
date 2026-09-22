@@ -33,6 +33,20 @@ def test_lint_rejects_bad_category_and_budget(tmp_path, vocab_path):
         t.load_task(p, v)
 
 
+def test_lint_rejects_missing_id(tmp_path, vocab_path):
+    v = t.load_vocabulary(vocab_path)
+    p = write(tmp_path, "001.yaml", category="single", must=["1girl"], seed_hint=1, budget=12)
+    with pytest.raises(t.TaskLintError, match="id"):
+        t.load_task(p, v)
+
+
+def test_lint_rejects_non_list_must(tmp_path, vocab_path):
+    v = t.load_vocabulary(vocab_path)
+    p = write(tmp_path, "001.yaml", id=1, category="single", must="1girl", seed_hint=1, budget=12)
+    with pytest.raises(t.TaskLintError, match="list"):
+        t.load_task(p, v)
+
+
 def test_load_tasks_sorted(tmp_path, vocab_path):
     v = t.load_vocabulary(vocab_path)
     write(tmp_path, "b.yaml", id=2, category="single", must=["1girl"], seed_hint=1, budget=12)

@@ -28,11 +28,15 @@ def load_vocabulary(csv_path):
 
 def load_task(path, vocabulary):
     d = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(d.get("id"), int):
+        raise TaskLintError(f"{path}: id must be an int")
     if d.get("category") not in CATEGORIES:
         raise TaskLintError(f"{path}: category {d.get('category')!r} not in {CATEGORIES}")
     if not isinstance(d.get("budget"), int) or d["budget"] < 1:
         raise TaskLintError(f"{path}: budget must be a positive int")
-    must = list(d.get("must") or [])
+    must = d.get("must")
+    if not isinstance(must, list) or not all(isinstance(tag, str) for tag in must):
+        raise TaskLintError(f"{path}: must must be a list of tags")
     if not must:
         raise TaskLintError(f"{path}: must is empty")
     bad = [tag for tag in must if not judgeable(tag, vocabulary)]
