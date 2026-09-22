@@ -51,6 +51,8 @@ def server():
     t = threading.Thread(target=srv.serve_forever, daemon=True); t.start()
     yield f"127.0.0.1:{srv.server_port}"
     srv.shutdown()
+    srv.server_close()
+    t.join(timeout=5)
 
 
 def test_run_returns_first_image(server):
@@ -77,3 +79,8 @@ def test_gpu_used_parses_nvidia_smi(monkeypatch):
 def test_gpu_used_zero_without_nvidia_smi(monkeypatch):
     monkeypatch.setattr(cm, "_nvidia_smi", lambda: None)
     assert cm.gpu_used_mb() == 0
+
+
+def test_run_raises_comfy_error_on_transport_failure():
+    with pytest.raises(cm.ComfyError):
+        cm.Comfy("127.0.0.1:1", timeout=1).run({})

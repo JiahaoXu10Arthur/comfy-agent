@@ -3,9 +3,12 @@ import json
 import shutil
 import subprocess
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+
+_TRANSPORT_ERRORS = (urllib.error.HTTPError, urllib.error.URLError, TimeoutError)
 
 
 class ComfyError(RuntimeError):
@@ -55,14 +58,20 @@ class Comfy:
             return False
 
     def run(self, graph):
-        out = self._post("/prompt", {"prompt": graph, "client_id": self.client_id})
+        try:
+            out = self._post("/prompt", {"prompt": graph, "client_id": self.client_id})
+        except _TRANSPORT_ERRORS as e:
+            raise ComfyError(f"ComfyUI unreachable or refused: {e}") from e
         if "prompt_id" not in out:
             raise ComfyError(f"ComfyUI rejected the graph: {out}")
         pid = out["prompt_id"]
         deadline = time.time() + self.timeout
         hist = {}
         while time.time() < deadline:
-            hist = self._get(f"/history/{pid}").get(pid)
+            try:
+                hist = self._get(f"/history/{pid}").get(pid)
+            except _TRANSPORT_ERRORS as e:
+                raise ComfyError(f"ComfyUI unreachable or refused: {e}") from e
             if hist:
                 break
             time.sleep(1.0)
@@ -77,8 +86,11 @@ class Comfy:
                     continue
                 q = urllib.parse.urlencode({"filename": img["filename"], "subfolder": img.get("subfolder", ""),
                                             "type": img.get("type", "output")})
-                with urllib.request.urlopen(f"http://{self.host}/view?{q}", timeout=120) as r:
-                    return img["filename"], r.read()
+                try:
+                    with urllib.request.urlopen(f"http://{self.host}/view?{q}", timeout=120) as r:
+                        return img["filename"], r.read()
+                except _TRANSPORT_ERRORS as e:
+                    raise ComfyError(f"ComfyUI unreachable or refused: {e}") from e
         raise ComfyError(f"run {pid} produced no images; status={status}")
 
 
