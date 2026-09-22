@@ -67,6 +67,17 @@ def test_knob_exactly_one(catalog_dict, vocab_path):
     assert f.check(a, arm(loras=(("Emilia-all outfits-illu", 0.8),)), "knob:strength:Emilia-all outfits-illu", catalog_dict, v).ok
 
 
+def test_knob_rejects_unknown_names(catalog_dict, vocab_path):
+    v = load_vocabulary(vocab_path)
+    bad = f.check(arm(), arm(loras=(("Emilia-all outfits-illu", 1.0),)), "knob:loras", catalog_dict, v)
+    assert not bad.ok and "knob claim" in bad.reason
+
+
+def test_reword_rejects_noop_when_old_tag_absent(catalog_dict, vocab_path):
+    v = load_vocabulary(vocab_path)
+    assert not f.check(arm(), arm(), "reword:nonexistent->grey hair", catalog_dict, v).ok
+
+
 def test_factor_list_and_arm_from_call():
     a = f.arm_from_call({"workflow": "sdxl", "base": "b", "loras": [{"file": "x", "strength": 0.8}],
                          "tags": [{"tag": "1girl", "weight": None}, {"tag": "on side", "weight": 1.3}],

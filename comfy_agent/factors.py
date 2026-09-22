@@ -94,6 +94,8 @@ def check(prev, cur, claim, catalog, vocabulary):
         old, _, new = rest.partition("->")
         if knobs_changed:
             return Check(False, "reword claim but knobs changed")
+        if old not in [t for t, _ in prev.tags]:
+            return Check(False, f"reword claim: {old!r} is not in the previous tags")
         exp = tuple((new if t == old else t, w) for t, w in prev.tags)
         if exp != cur.tags or old == new:
             return Check(False, f"reword claim but the change is not exactly {old!r}->{new!r}")
@@ -124,6 +126,8 @@ def check(prev, cur, claim, catalog, vocabulary):
                     [f for f in pl if pl[f] != cl[f]] != [file]:
                 return Check(False, f"strength claim must change only {file!r}")
             return Check(True, "strength")
+        if rest not in ("seed", "cfg", "steps"):
+            return Check(False, f"knob claim must be one of seed, cfg, steps, strength:<file>; got {rest!r}")
         if knobs_changed != [rest]:
             return Check(False, f"knob claim {rest!r} but changed: {knobs_changed}")
         return Check(True, rest)
