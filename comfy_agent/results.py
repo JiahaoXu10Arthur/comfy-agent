@@ -17,6 +17,9 @@ class Results:
         self.db = sqlite3.connect(str(Path(path)))
         self.db.executescript(SCHEMA)
 
+    def close(self):
+        self.db.close()
+
     def add_render(self, render_id, arm, run, task_id, n, factors, claim, png, seconds):
         self.db.execute("INSERT INTO render(render_id,arm,run,task_id,n,factors,claim,png,seconds) VALUES(?,?,?,?,?,?,?,?,?)",
                         (render_id, arm, run, task_id, n, json.dumps(factors), claim, png, seconds))
