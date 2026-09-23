@@ -1,0 +1,84 @@
+import pytest
+from comfy_agent import baselines as bl
+from comfy_agent.tools import Tools
+from comfy_agent.results import Results
+from comfy_agent.tasks import Task, load_vocabulary
+from comfy_agent.tagger import Tagger
+
+
+class FakeComfy:
+    def __init__(self):
+        self.graphs = []
+
+    def run(self, graph):
+        self.graphs.append(graph)
+        return "o.png", b"\x89PNG"
+
+
+class Backend:
+    """The second must tag's score is decided by `rule(graph)`; 1girl always lands."""
+    def __init__(self, comfy, rule, key="on_side"):
+        self.comfy, self.rule, self.key = comfy, rule, key
+
+    def tag(self, path):
+        g = self.comfy.graphs[-1]
+        return {"1girl": 0.99, self.key: self.rule(g)}
+
+
+@pytest.fixture
+def make(tmp_path, catalog_dict, vocab_path):
+    def _make(rule, must=("1girl", "on side"), budget=12, arm="baseline-ladder", key="on_side"):
+        v = load_vocabulary(vocab_path)
+        comfy = FakeComfy()
+        task = Task(7, "pose", list(must), 1001, budget)
+        tools = Tools(catalog_dict, v, comfy, Tagger(Backend(comfy, rule, key), 0.35, v), Results(tmp_path / f"{arm}.sqlite"),
+                      tmp_path, arm, 1, task)
+        return task, tools, comfy
+    return _make
+
+
+def test_seed_baseline_stops_when_landed(make, tmp_path, catalog_dict):
+    task, tools, comfy = make(lambda g: 0.9 if g["ks"]["inputs"]["seed"] == 1003 else 0.1, arm="baseline-seed")
+    out = bl.run_seed_baseline(task, catalog_dict, tools, tmp_path / "s")
+    assert out.verdict == "ACHIEVED" and out.renders == 3
+    assert [g["ks"]["inputs"]["seed"] for g in comfy.graphs] == [1001, 1002, 1003]
+    assert all(g["ckpt"]["inputs"]["ckpt_name"] == "ChenkinNoob-XL-V0.5.safetensors" for g in comfy.graphs)
+
+
+def test_seed_baseline_exhausts(make, tmp_path, catalog_dict):
+    task, tools, _ = make(lambda g: 0.1, budget=4, arm="baseline-seed")
+    out = bl.run_seed_baseline(task, catalog_dict, tools, tmp_path / "s")
+    assert out.verdict == "NOT_ACHIEVABLE_HERE" and out.renders == 4 and out.stop_reason == "budget"
+
+
+def test_ladder_order_and_early_stop(make, tmp_path, catalog_dict):
+    task, tools, comfy = make(lambda g: 0.9 if "(on side:1.3)" in g["pos"]["inputs"]["text"] else 0.1)
+    out = bl.run_ladder(task, catalog_dict, tools, tmp_path / "l")
+    assert out.verdict == "ACHIEVED" and out.renders == 3
+    texts = [g["pos"]["inputs"]["text"] for g in comfy.graphs]
+    assert texts == ["1girl, on side", "on side, 1girl", "(on side:1.3), 1girl"]
+
+
+def test_ladder_walks_both_workflows_then_seeds(make, tmp_path, catalog_dict):
+    task, tools, comfy = make(lambda g: 0.1)
+    out = bl.run_ladder(task, catalog_dict, tools, tmp_path / "l")
+    assert out.verdict == "NOT_ACHIEVABLE_HERE" and out.renders == 12
+    # sdxl: start, move, weight, cfg+1 (无 LoRA 匹配) = 4；anima 同样 4；剩 4 张批 seed
+    bases = [g["ckpt"]["inputs"]["ckpt_name"] if "ckpt" in g else g["unet"]["inputs"]["unet_name"] for g in comfy.graphs]
+    assert bases[:4] == ["ChenkinNoob-XL-V0.5.safetensors"] * 4 and bases[4:8] == ["miaomiaoHarem_anima16.safetensors"] * 4
+    assert comfy.graphs[3]["ks"]["inputs"]["cfg"] == 7.0 and comfy.graphs[7]["ks"]["inputs"]["cfg"] == 6.0
+    assert [g["ks"]["inputs"]["seed"] for g in comfy.graphs[8:]] == [1002, 1003, 1004, 1005]
+
+
+def test_ladder_opens_matching_lora(make, tmp_path, catalog_dict):
+    task, tools, comfy = make(lambda g: 0.9 if "<lora:nier2b_anima" in g["lora"]["inputs"]["lora_syntax"] else 0.1,
+                              must=("1girl", "2b (nier:automata)"), key="2b_(nier:automata)")
+    out = bl.run_ladder(task, catalog_dict, tools, tmp_path / "l")
+    assert out.verdict == "ACHIEVED"
+    g = comfy.graphs[-1]
+    assert g["lora"]["inputs"]["lora_syntax"] == "<lora:nier2b_anima:1.00>" and g["pos"]["inputs"]["text"].startswith("(2b (nier:automata):1.3)")
+
+
+def test_main_tag():
+    assert bl.main_tag({"1girl": ("LANDED", 0.9), "on side": ("MISSING", 0.1), "smile": ("MISSING", 0.2)}, ["1girl", "on side", "smile"]) == "on side"
+    assert bl.main_tag({"1girl": ("LANDED", 0.9), "on side": ("LANDED", 0.5)}, ["1girl", "on side"]) == "on side"
