@@ -109,11 +109,13 @@ def check(prev, cur, claim, catalog, vocabulary):
         if knobs_changed != ["loras"] or set(prev.loras) | {(rest, float(entry["strength"]))} != set(cur.loras) \
                 or len(cur.loras) != len(prev.loras) + 1:
             return Check(False, "lora claim must add exactly that LoRA at its catalog strength")
-        trig = [normalise(t) for t in entry["trigger"]]
+        trig_norm = [normalise(t) for t in entry["trigger"]]
         prev_norm = [normalise(t) for t, _ in prev.tags]
-        cur_norm = [normalise(t) for t, _ in cur.tags]
-        added = [t for t in trig if t not in prev_norm]
-        if cur_norm != added + prev_norm:
+        added_norm = [t for t in trig_norm if t not in prev_norm]
+        if len(cur.tags) != len(added_norm) + len(prev.tags):
+            return Check(False, "lora claim: tags must be prev tags with the LoRA's triggers prepended, nothing else")
+        added_cur, rest_cur = cur.tags[:len(added_norm)], cur.tags[len(added_norm):]
+        if [normalise(t) for t, _ in added_cur] != added_norm or rest_cur != prev.tags:
             return Check(False, "lora claim: tags must be prev tags with the LoRA's triggers prepended, nothing else")
         return Check(True, "lora")
     if kind == "knob":

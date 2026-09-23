@@ -58,6 +58,18 @@ def test_lora_is_composite(catalog_dict, vocab_path):
     assert not f.check(b, wrong_wf, "lora:nier2b_anima", catalog_dict, v).ok
 
 
+def test_lora_claim_rejects_a_weight_change_riding_along(catalog_dict, vocab_path):
+    v = load_vocabulary(vocab_path)
+    prev = arm(workflow="anima", base="miaomiaoHarem_anima16.safetensors", cfg=5.0, tags=(("1girl", None),))
+    sneaky = arm(workflow="anima", base="miaomiaoHarem_anima16.safetensors", cfg=5.0,
+                loras=(("nier2b_anima", 1.0),), tags=(("2b (nier:automata)", None), ("1girl", 1.4)))
+    bad = f.check(prev, sneaky, "lora:nier2b_anima", catalog_dict, v)
+    assert not bad.ok
+    honest = arm(workflow="anima", base="miaomiaoHarem_anima16.safetensors", cfg=5.0,
+                loras=(("nier2b_anima", 1.0),), tags=(("2b (nier:automata)", None), ("1girl", None)))
+    assert f.check(prev, honest, "lora:nier2b_anima", catalog_dict, v).ok
+
+
 def test_knob_exactly_one(catalog_dict, vocab_path):
     v = load_vocabulary(vocab_path)
     assert f.check(arm(), arm(cfg=7.0), "knob:cfg", catalog_dict, v).ok

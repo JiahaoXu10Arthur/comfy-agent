@@ -46,6 +46,23 @@ def test_render_then_tag_check(tools):
     assert t["all_landed"] is False and t["min_score"] == 0.1 and t["scores"]["on side"][0] == "MISSING"
 
 
+def test_render_with_lora_builds_prompt_and_lora_syntax(tmp_path, catalog_dict, vocab_path):
+    v = load_vocabulary(vocab_path)
+    task = Task(9, "character", ["1girl", "2b (nier:automata)"], 1001, 12)
+    comfy = FakeComfy()
+    t = tl.Tools(catalog_dict, v, comfy, Tagger(FakeBackend(), 0.35, v), Results(tmp_path / "r.sqlite"),
+                tmp_path, "agent-deepseek", 1, task)
+    args = {"workflow": "anima", "base": "miaomiaoHarem_anima16.safetensors",
+            "loras": [{"file": "nier2b_anima", "strength": 1.0}],
+            "tags": [{"tag": "1girl"}], "seed": 1001, "cfg": 5.0, "steps": 30, "claim": "start"}
+    r = t.render(args)
+    assert r["render_id"] == "agent-deepseek-1-9-01"
+    g = comfy.graphs[0]
+    assert g["lora"]["inputs"]["lora_syntax"] == "<lora:nier2b_anima:1.00>"
+    assert g["pos"]["inputs"]["text"] == "2b (nier:automata), 1girl"
+    t.results.close()
+
+
 def test_render_rejects_second_factor_without_rendering(tools):
     tools.render(call())
     with pytest.raises(tl.ToolError, match="MULTIVARIATE"):
