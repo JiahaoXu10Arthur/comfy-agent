@@ -43,7 +43,15 @@ def test_run_grid_marks_achievable_and_checks_gpu(tmp_path, catalog_dict, vocab_
     checks = []
     out = grid.run_grid(tasks, catalog_dict, comfy, tagger, res, tmp_path, gpu_check=lambda: checks.append(1) or True)
     assert out == {7: True, 8: False}
-    assert len(comfy.graphs) == 96 and len(checks) == 8      # 2 任务 × 4 组（workflow×base）
+    assert len(comfy.graphs) == 96
+    assert len(checks) == 4      # globally 2 workflows x 2 bases, not per task
+    bases = []
+    for g in comfy.graphs:
+        b = g["ckpt"]["inputs"]["ckpt_name"] if "ckpt" in g else g["unet"]["inputs"]["unet_name"]
+        if not bases or bases[-1] != b:
+            bases.append(b)
+    assert bases == ["ChenkinNoob-XL-V0.5.safetensors", "oneObsession_v24.safetensors",
+                     "miaomiaoHarem_anima16.safetensors", "anima_baseV10.safetensors"]
     assert grid.achievable(res, 7) is True and grid.achievable(res, 8) is False
 
 

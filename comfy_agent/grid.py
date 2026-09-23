@@ -39,30 +39,36 @@ def cells(task, catalog):
 
 
 def run_grid(tasks, catalog, comfy, tagger, results, out_dir, gpu_check=None):
+    """Cells for every task, sorted globally by (workflow order, base order) so the base
+    switches only 3 times across the whole grid (spec §8), not once per task (I8)."""
     gpu_check = gpu_check or (lambda: cm.gpu_ok(comfy))
     out_dir = Path(out_dir); out_dir.mkdir(parents=True, exist_ok=True)
     graphs = {w["name"]: graph.load_graph(w["graph"]) for w in catalog["workflows"]}
-    achievable_map = {}
-    for task in tasks:
-        n = 0
-        for (wfname, base), group in groupby(cells(task, catalog), key=lambda c: (c["workflow"], c["base"])):
-            if not gpu_check():
-                raise RuntimeError("GPU busy: someone else is using more than the limit")
-            wf = cat.workflow(catalog, wfname)
+    wf_order = {w["name"]: i for i, w in enumerate(catalog["workflows"])}
+    base_order = {w["name"]: {b: i for i, b in enumerate(w["bases"])} for w in catalog["workflows"]}
+
+    all_cells = [(task, c) for task in tasks for c in cells(task, catalog)]
+    all_cells.sort(key=lambda tc: (wf_order[tc[1]["workflow"]], base_order[tc[1]["workflow"]][tc[1]["base"]]))
+
+    n_by_task = {task.id: 0 for task in tasks}
+    for (wfname, base), group in groupby(all_cells, key=lambda tc: (tc[1]["workflow"], tc[1]["base"])):
+        if not gpu_check():
+            raise RuntimeError("GPU busy: someone else is using more than the limit")
+        wf = cat.workflow(catalog, wfname)
+        for task, c in group:
             must_norm = {normalise(t) for t in task.must}
-            for c in group:
-                n += 1
-                arm = arm_from_call(c)
-                triggers = [t["tag"] for t in c["tags"] if normalise(t["tag"]) not in must_norm]
-                prompt = graph.build_prompt([t for t in c["tags"] if normalise(t["tag"]) in must_norm], triggers)
-                g = graph.apply(graphs[wfname], wf["base_node"], base, c["loras"], prompt, c["seed"], c["cfg"], c["steps"])
-                _, data = comfy.run(g)
-                rid = f"grid-0-{task.id}-{n:02d}"
-                png = out_dir / f"{rid}.png"; png.write_bytes(data)
-                results.add_render(rid, "grid", 0, task.id, n, factor_list(arm), "grid", str(png), 0.0)
-                results.add_tags(rid, tagger.judge(str(png), task.must))
-        achievable_map[task.id] = achievable(results, task.id)
-    return achievable_map
+            n_by_task[task.id] += 1
+            n = n_by_task[task.id]
+            arm = arm_from_call(c)
+            triggers = [t["tag"] for t in c["tags"] if normalise(t["tag"]) not in must_norm]
+            prompt = graph.build_prompt([t for t in c["tags"] if normalise(t["tag"]) in must_norm], triggers)
+            g = graph.apply(graphs[wfname], wf["base_node"], base, c["loras"], prompt, c["seed"], c["cfg"], c["steps"])
+            _, data = comfy.run(g)
+            rid = f"grid-0-{task.id}-{n:02d}"
+            png = out_dir / f"{rid}.png"; png.write_bytes(data)
+            results.add_render(rid, "grid", 0, task.id, n, factor_list(arm), "grid", str(png), 0.0)
+            results.add_tags(rid, tagger.judge(str(png), task.must))
+    return {task.id: achievable(results, task.id) for task in tasks}
 
 
 def achievable(results, task_id):
