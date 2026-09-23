@@ -1,5 +1,6 @@
 import pytest
 from comfy_agent import baselines as bl
+from comfy_agent.comfy import ComfyError
 from comfy_agent.tools import Tools
 from comfy_agent.results import Results
 from comfy_agent.tasks import Task, load_vocabulary
@@ -11,6 +12,21 @@ class FakeComfy:
         self.graphs = []
 
     def run(self, graph):
+        self.graphs.append(graph)
+        return "o.png", b"\x89PNG"
+
+
+class FlakyComfy:
+    """Like FakeComfy, but raises ComfyError from `run` on the 1-indexed call numbers in `fail_on`."""
+    def __init__(self, fail_on=()):
+        self.graphs = []
+        self.calls = 0
+        self.fail_on = set(fail_on)
+
+    def run(self, graph):
+        self.calls += 1
+        if self.calls in self.fail_on:
+            raise ComfyError("boom")
         self.graphs.append(graph)
         return "o.png", b"\x89PNG"
 
@@ -27,9 +43,9 @@ class Backend:
 
 @pytest.fixture
 def make(tmp_path, catalog_dict, vocab_path):
-    def _make(rule, must=("1girl", "on side"), budget=12, arm="baseline-ladder", key="on_side"):
+    def _make(rule, must=("1girl", "on side"), budget=12, arm="baseline-ladder", key="on_side", fail_on=()):
         v = load_vocabulary(vocab_path)
-        comfy = FakeComfy()
+        comfy = FlakyComfy(fail_on) if fail_on else FakeComfy()
         task = Task(7, "pose", list(must), 1001, budget)
         tools = Tools(catalog_dict, v, comfy, Tagger(Backend(comfy, rule, key), 0.35, v), Results(tmp_path / f"{arm}.sqlite"),
                       tmp_path, arm, 1, task)
@@ -77,6 +93,42 @@ def test_ladder_opens_matching_lora(make, tmp_path, catalog_dict):
     assert out.verdict == "ACHIEVED"
     g = comfy.graphs[-1]
     assert g["lora"]["inputs"]["lora_syntax"] == "<lora:nier2b_anima:1.00>" and g["pos"]["inputs"]["text"].startswith("(2b (nier:automata):1.3)")
+
+
+def test_seed_baseline_retries_once_on_comfy_error(make, tmp_path, catalog_dict):
+    task, tools, comfy = make(lambda g: 0.9 if g["ks"]["inputs"]["seed"] == 1003 else 0.1,
+                               arm="baseline-seed-retry", fail_on=(1,))
+    out = bl.run_seed_baseline(task, catalog_dict, tools, tmp_path / "s")
+    assert out.verdict == "ACHIEVED" and out.renders == 3
+    assert [g["ks"]["inputs"]["seed"] for g in comfy.graphs] == [1001, 1002, 1003]
+
+
+def test_seed_baseline_blocked_after_two_comfy_errors(make, tmp_path, catalog_dict):
+    task, tools, comfy = make(lambda g: 0.9, arm="baseline-seed-blocked", fail_on=(1, 2))
+    run_dir = tmp_path / "s"
+    out = bl.run_seed_baseline(task, catalog_dict, tools, run_dir)
+    assert out.verdict == "BLOCKED" and out.stop_reason == "tool_error" and out.render_id is None
+    assert out.renders == 0
+    assert (run_dir / "summary.md").exists()
+
+
+def test_ladder_retries_once_on_comfy_error(make, tmp_path, catalog_dict):
+    task, tools, comfy = make(lambda g: 0.9 if "(on side:1.3)" in g["pos"]["inputs"]["text"] else 0.1,
+                               arm="baseline-ladder-retry", fail_on=(1,))
+    out = bl.run_ladder(task, catalog_dict, tools, tmp_path / "l")
+    assert out.verdict == "ACHIEVED" and out.renders == 3
+    texts = [g["pos"]["inputs"]["text"] for g in comfy.graphs]
+    assert texts == ["1girl, on side", "on side, 1girl", "(on side:1.3), 1girl"]
+
+
+def test_ladder_blocked_after_two_comfy_errors_with_prior_render(make, tmp_path, catalog_dict):
+    task, tools, comfy = make(lambda g: 0.1, arm="baseline-ladder-blocked2", fail_on=(2, 3))
+    run_dir = tmp_path / "l"
+    out = bl.run_ladder(task, catalog_dict, tools, run_dir)
+    assert out.verdict == "BLOCKED" and out.stop_reason == "tool_error"
+    assert out.render_id == "baseline-ladder-blocked2-1-7-01"
+    assert out.renders == 1
+    assert (run_dir / "summary.md").exists()
 
 
 def test_main_tag():
