@@ -41,16 +41,27 @@ def cells(task, catalog):
 def run_grid(tasks, catalog, comfy, tagger, results, out_dir, gpu_check=None):
     """Cells for every task, sorted globally by (workflow order, base order) so the base
     switches only 3 times across the whole grid (spec §8), not once per task (I8).
-    Resumable (C5, spec §10 v3.1): a task that already has grid rows (arm grid, run 0) is
-    skipped entirely; a task with none runs in full."""
+    Resumable (C5, spec §10 v3.1): a task counts as finished only when it has exactly as
+    many grid rows as `cells(task, catalog)` produces. A task with no rows runs in full and
+    is skipped; a task stopped partway through (some rows, fewer than its cell count, e.g. a
+    GPU-busy abort at a base boundary) has its rows deleted and also runs in full, since the
+    cells sort globally and a partial task's later cells may not have run yet."""
     gpu_check = gpu_check or (lambda: cm.gpu_ok(comfy))
     out_dir = Path(out_dir); out_dir.mkdir(parents=True, exist_ok=True)
     graphs = {w["name"]: graph.load_graph(w["graph"]) for w in catalog["workflows"]}
     wf_order = {w["name"]: i for i, w in enumerate(catalog["workflows"])}
     base_order = {w["name"]: {b: i for i, b in enumerate(w["bases"])} for w in catalog["workflows"]}
 
-    pending = [task for task in tasks if not results.renders("grid", 0, task.id)]
-    all_cells = [(task, c) for task in pending for c in cells(task, catalog)]
+    task_cells = {task.id: cells(task, catalog) for task in tasks}
+    pending = []
+    for task in tasks:
+        n_rows = len(results.renders("grid", 0, task.id))
+        if n_rows == len(task_cells[task.id]):
+            continue
+        if n_rows:
+            results.delete_scope("grid", 0, task.id)
+        pending.append(task)
+    all_cells = [(task, c) for task in pending for c in task_cells[task.id]]
     all_cells.sort(key=lambda tc: (wf_order[tc[1]["workflow"]], base_order[tc[1]["workflow"]][tc[1]["base"]]))
 
     n_by_task = {task.id: 0 for task in pending}

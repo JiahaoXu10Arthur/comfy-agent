@@ -56,6 +56,16 @@ def test_run_grid_prompt_does_not_duplicate_a_lora_trigger_that_differs_from_a_m
     res.close()
 
 
+def test_cells_uses_character_tags_not_must_for_lora_matching(catalog_dict):
+    t_no_char = Task(9, "character", ["1girl", "2b (nier:automata)"], 1001, 12, [])
+    cells_no_char = grid.cells(t_no_char, catalog_dict)
+    assert not any(c["loras"] for c in cells_no_char if c["workflow"] == "anima")
+
+    t_char = Task(9, "character", ["1girl", "2b (nier:automata)"], 1001, 12, ["2b (nier:automata)"])
+    cells_char = grid.cells(t_char, catalog_dict)
+    assert any(c["loras"] for c in cells_char if c["workflow"] == "anima")
+
+
 def test_run_grid_marks_achievable_and_checks_gpu(tmp_path, catalog_dict, vocab_path):
     v = load_vocabulary(vocab_path)
     comfy = FakeComfy()
@@ -92,6 +102,48 @@ def test_run_grid_resumes_without_rerendering_finished_tasks(tmp_path, catalog_d
     assert out2 == out1
     assert len(comfy.graphs) == n_after_first
     res.close()
+
+
+def test_run_grid_resumes_by_rerunning_an_unfinished_task_in_full(tmp_path, catalog_dict, vocab_path):
+    v = load_vocabulary(vocab_path)
+    comfy = FakeComfy()
+    rule = lambda g: {"1girl": 0.99, "on_side": 0.9 if "oneObsession" in str(g.get("ckpt", {})) else 0.1,
+                      "stretching": 0.1}
+    tagger = Tagger(Backend(comfy, rule), 0.35, v)
+    res = Results(tmp_path / "r.sqlite")
+    t7 = Task(7, "pose", ["1girl", "on side"], 1001, 12, [])
+    t8 = Task(8, "pose", ["1girl", "stretching"], 1001, 12, [])
+    n_cells_7, n_cells_8 = len(grid.cells(t7, catalog_dict)), len(grid.cells(t8, catalog_dict))
+
+    grid.run_grid([t7], catalog_dict, comfy, tagger, res, tmp_path, gpu_check=lambda: True)
+    assert len(res.renders("grid", 0, 7)) == n_cells_7
+    n_after_t7 = len(comfy.graphs)
+
+    calls = {"n": 0}
+
+    def flaky_gpu():
+        calls["n"] += 1
+        return calls["n"] <= 1
+    with pytest.raises(RuntimeError, match="GPU busy"):
+        grid.run_grid([t7, t8], catalog_dict, comfy, tagger, res, tmp_path, gpu_check=flaky_gpu)
+    n_after_interrupt = len(comfy.graphs)
+    assert n_after_interrupt > n_after_t7
+    n_task8_partial = len(res.renders("grid", 0, 8))
+    assert 0 < n_task8_partial < n_cells_8
+    assert len(res.renders("grid", 0, 7)) == n_cells_7   # task 7 untouched by the interruption
+
+    out = grid.run_grid([t7, t8], catalog_dict, comfy, tagger, res, tmp_path, gpu_check=lambda: True)
+    assert len(comfy.graphs) == n_after_interrupt + n_cells_8   # task 7 not re-rendered
+    assert len(res.renders("grid", 0, 7)) == n_cells_7
+    assert len(res.renders("grid", 0, 8)) == n_cells_8
+
+    res2 = Results(tmp_path / "r_full.sqlite")
+    comfy2 = FakeComfy()
+    tagger2 = Tagger(Backend(comfy2, rule), 0.35, v)
+    full = grid.run_grid([t7, t8], catalog_dict, comfy2, tagger2, res2, tmp_path / "full", gpu_check=lambda: True)
+    assert out == full
+    res.close()
+    res2.close()
 
 
 def test_run_grid_stops_when_gpu_busy(tmp_path, catalog_dict, vocab_path):

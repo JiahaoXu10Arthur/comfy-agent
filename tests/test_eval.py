@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from comfy_agent import eval as ev
@@ -113,6 +115,18 @@ def test_run_eval_resumes_without_rerunning_finished_triples(tmp_path, catalog_d
     assert rows2 == rows1
     assert sum(len(results.renders("baseline-seed", 1, t.id)) for t in tasks) == total_renders
     assert len((tmp_path / "rows.jsonl").read_text(encoding="utf-8").splitlines()) == 2
+    results.close()
+
+
+def test_run_eval_ignores_stale_rows_outside_the_requested_scope(tmp_path, catalog_dict, vocab_path):
+    tasks, results, make_tools = _eval_fixture(tmp_path, catalog_dict, vocab_path)
+    stale = row("baseline-ladder", 1, 1, "ACHIEVED", 1)
+    (tmp_path / "rows.jsonl").write_text(json.dumps(stale) + "\n", encoding="utf-8")
+    rows = ev.run_eval(tasks, catalog_dict, ["baseline-seed"], 1, None, make_tools, results, tmp_path)
+    assert len(rows) == 2 and all(r["arm"] == "baseline-seed" for r in rows)
+    lines = (tmp_path / "rows.jsonl").read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 3
+    assert json.loads(lines[0])["arm"] == "baseline-ladder"
     results.close()
 
 

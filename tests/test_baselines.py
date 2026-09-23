@@ -130,6 +130,31 @@ def test_ladder_opens_matching_lora(make, tmp_path, catalog_dict):
     assert g["lora"]["inputs"]["lora_syntax"] == "<lora:nier2b_anima:1.00>" and g["pos"]["inputs"]["text"].startswith("(2b (nier:automata):1.3)")
 
 
+def _lora_opened(graphs, file):
+    return any(f"<lora:{file}" in g.get("lora", {}).get("inputs", {}).get("lora_syntax", "") for g in graphs)
+
+
+def test_ladder_uses_character_tags_not_must_for_lora_matching(tmp_path, catalog_dict, vocab_path):
+    v = load_vocabulary(vocab_path)
+    rule = lambda g: 0.1
+
+    comfy_no_char = FakeComfy()
+    task_no_char = Task(9, "character", ["1girl", "2b (nier:automata)"], 1001, 12, [])
+    tools_no_char = Tools(catalog_dict, v, comfy_no_char, Tagger(Backend(comfy_no_char, rule, "2b (nier:automata)"), 0.35, v),
+                          Results(tmp_path / "nolora.sqlite"), tmp_path, "baseline-ladder", 1, task_no_char)
+    bl.run_ladder(task_no_char, catalog_dict, tools_no_char, tmp_path / "l1")
+    assert not _lora_opened(comfy_no_char.graphs, "nier2b_anima")
+    tools_no_char.results.close()
+
+    comfy_char = FakeComfy()
+    task_char = Task(9, "character", ["1girl", "2b (nier:automata)"], 1001, 12, ["2b (nier:automata)"])
+    tools_char = Tools(catalog_dict, v, comfy_char, Tagger(Backend(comfy_char, rule, "2b (nier:automata)"), 0.35, v),
+                       Results(tmp_path / "withlora.sqlite"), tmp_path, "baseline-ladder", 1, task_char)
+    bl.run_ladder(task_char, catalog_dict, tools_char, tmp_path / "l2")
+    assert _lora_opened(comfy_char.graphs, "nier2b_anima")
+    tools_char.results.close()
+
+
 def test_ladder_lora_step_tolerates_trigger_case_mismatch(tmp_path, catalog_dict, vocab_path):
     v = load_vocabulary(vocab_path)
     cat2 = json.loads(json.dumps(catalog_dict))

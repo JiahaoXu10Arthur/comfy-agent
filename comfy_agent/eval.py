@@ -22,17 +22,23 @@ def _switched(rends):
 
 
 def run_eval(tasks, catalog, arms, runs, make_provider, make_tools, results, out_dir, gpu_check=lambda: True):
-    """Resumable (C5, spec §10 v3.1): rows already in `<out_dir>/rows.jsonl` are returned
-    as-is and their (arm, run, task) triple is not re-run; every newly finished triple is
-    appended to rows.jsonl immediately, so a crash keeps everything finished so far."""
+    """Resumable (C5, spec §10 v3.1): rows already in `<out_dir>/rows.jsonl` for a triple in
+    this call's (arms, runs, tasks) scope are returned as-is and not re-run; every newly
+    finished triple is appended to rows.jsonl immediately, so a crash keeps everything
+    finished so far. A line whose (arm, run, task_id) falls outside this call's scope (a
+    stale row from a different arms/runs/tasks selection) stays in the file but is not
+    returned and does not affect which triples this call runs."""
     out_dir = Path(out_dir); out_dir.mkdir(parents=True, exist_ok=True)
     rows_path = out_dir / "rows.jsonl"
+    requested = {(arm, r, task.id) for arm in arms for r in range(1, runs + 1) for task in tasks}
     rows, done = [], set()
     if rows_path.exists():
         for line in rows_path.read_text(encoding="utf-8").splitlines():
             row = json.loads(line)
-            rows.append(row)
-            done.add((row["arm"], row["run"], row["task_id"]))
+            key = (row["arm"], row["run"], row["task_id"])
+            if key in requested:
+                rows.append(row)
+                done.add(key)
     with open(rows_path, "a", encoding="utf-8") as rows_file:
         for arm in arms:
             for r in range(1, runs + 1):
