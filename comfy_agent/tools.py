@@ -39,6 +39,14 @@ class ToolError(Exception):
     pass
 
 
+class BadCall(ToolError):
+    """An argument-shape error: the call could never have succeeded (unknown workflow/base/
+    LoRA file, bad render arguments, unknown verdict, a render_id that is missing or belongs
+    to another task). Counts toward loop.py's three-consecutive-bad-calls BLOCK; a gate
+    rejection (single_factor, conclude refusal) does not."""
+    pass
+
+
 class Tools:
     def __init__(self, catalog, vocabulary, comfy, tagger, results, out_dir, arm, run, task):
         self.catalog, self.vocabulary, self.comfy, self.tagger, self.results = catalog, vocabulary, comfy, tagger, results
@@ -53,17 +61,17 @@ class Tools:
         try:
             wf = cat.workflow(self.catalog, args["workflow"])
         except KeyError:
-            raise ToolError(f"unknown workflow {args.get('workflow')!r}")
+            raise BadCall(f"unknown workflow {args.get('workflow')!r}")
         try:
             base = args["base"]
         except KeyError as e:
-            raise ToolError(f"bad render arguments: {e}") from e
+            raise BadCall(f"bad render arguments: {e}") from e
         if base not in wf["bases"]:
-            raise ToolError(f"base {base!r} not in catalog for {wf['name']}: {wf['bases']}")
+            raise BadCall(f"base {base!r} not in catalog for {wf['name']}: {wf['bases']}")
         try:
             arm = factors.arm_from_call(args)
         except (KeyError, TypeError, ValueError) as e:
-            raise ToolError(f"bad render arguments: {e}")
+            raise BadCall(f"bad render arguments: {e}")
         c = factors.check(self.last_arm, arm, args.get("claim", ""), self.catalog, self.vocabulary)
         if not c.ok:
             raise ToolError(f"single_factor rejected: {c.reason}")
@@ -72,7 +80,7 @@ class Tools:
         for f, _ in arm.loras:
             entry = catalog_loras.get(f)
             if entry is None:
-                raise ToolError(f"LoRA {f!r} is not in the catalog for workflow {wf['name']}")
+                raise BadCall(f"LoRA {f!r} is not in the catalog for workflow {wf['name']}")
             triggers += entry["trigger"]
         # trigger 已在 tags 里的不重复
         tag_names = {normalise(t) for t, _ in arm.tags}
@@ -108,13 +116,13 @@ class Tools:
     def _own(self, render_id):
         row = self.results.get(render_id) if render_id else None
         if row is None or (row["arm"], row["run"], row["task_id"]) != (self.arm, self.run, self.task.id):
-            raise ToolError(f"render_id {render_id!r} does not belong to this task")
+            raise BadCall(f"render_id {render_id!r} does not belong to this task")
         return row
 
     def conclude(self, args):
         verdict = args.get("verdict")
         if verdict not in VERDICTS:
-            raise ToolError(f"verdict must be one of {VERDICTS}")
+            raise BadCall(f"verdict must be one of {VERDICTS}")
         missing = (args.get("missing") or "").strip()
         rid = args.get("render_id")
         row = None
@@ -134,5 +142,5 @@ class Tools:
     def dispatch(self, name, args):
         fn = {"render": self.render, "tag_check": self.tag_check, "history": self.history, "conclude": self.conclude}.get(name)
         if fn is None:
-            raise ToolError(f"no tool named {name!r}; tools are render, tag_check, history, conclude")
+            raise BadCall(f"no tool named {name!r}; tools are render, tag_check, history, conclude")
         return fn(args)

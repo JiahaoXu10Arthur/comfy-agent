@@ -110,6 +110,35 @@ def test_tool_error_twice_blocked(make, tmp_path):
     assert out.verdict == "BLOCKED" and out.stop_reason == "tool_error" and out.render_id is None
 
 
+def test_wrong_render_arguments_count_as_bad_calls(make, tmp_path):
+    bad = {"tool_call": {"name": "render", "arguments": {"workflow": "flux", "base": "x", "loras": [],
+            "tags": [{"tag": "1girl"}], "seed": 1, "cfg": 6.0, "steps": 30, "claim": "start"}}}
+    task, prov, tools = make([0.1], [bad, bad, bad])
+    out = lp.run_task(task, tools.catalog, prov, tools, tmp_path / "run")
+    assert out.verdict == "BLOCKED" and out.stop_reason == "bad_call"
+
+
+def test_bad_calls_spread_out_do_not_block(make, tmp_path):
+    task, prov, tools = make([0.9], [
+        render_call(1001, "start"), tc("tag_check", render_id="agent-deepseek-1-7-01"),
+        tc("paint", x=1),
+        render_call(1002, "knob:seed"), tc("tag_check", render_id="agent-deepseek-1-7-02"),
+        tc("paint", x=1),
+        tc("conclude", verdict="ACHIEVED", render_id="agent-deepseek-1-7-02", missing="")])
+    out = lp.run_task(task, tools.catalog, prov, tools, tmp_path / "run")
+    assert out.verdict == "ACHIEVED"
+
+
+def test_gate_rejections_never_count_as_bad_calls(make, tmp_path):
+    task, prov, tools = make([0.9], [
+        render_call(1001, "start"),
+        render_call(1002, "weight:on side"), render_call(1003, "weight:on side"), render_call(1004, "weight:on side"),
+        tc("tag_check", render_id="agent-deepseek-1-7-01"),
+        tc("conclude", verdict="ACHIEVED", render_id="agent-deepseek-1-7-01", missing="")])
+    out = lp.run_task(task, tools.catalog, prov, tools, tmp_path / "run")
+    assert out.verdict == "ACHIEVED"
+
+
 def test_restart_resets_no_progress_counter(make, tmp_path):
     task, prov, tools = make([0.10, 0.10, 0.10, 0.10, 0.9], [
         render_call(1001, "start"), tc("tag_check", render_id="agent-deepseek-1-7-01"),

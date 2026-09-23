@@ -7,7 +7,7 @@ from pathlib import Path
 from . import catalog as cat
 from .comfy import ComfyError
 from .provider import ProviderError
-from .tools import TOOL_SCHEMAS, ToolError
+from .tools import TOOL_SCHEMAS, BadCall, ToolError
 
 STOP_REASONS = ("model", "budget", "turns", "no_progress", "not_judgeable", "tool_error", "model_error", "bad_call")
 
@@ -103,18 +103,21 @@ def run_task(task, catalog, provider, tools, run_dir, max_turns=24, no_progress=
             try:
                 result = tools.dispatch(call["name"], call["arguments"])
                 rejection = None
-                tool_errors = 0
-            except ToolError as e:
+                tool_errors = bad_calls = 0
+            except BadCall as e:
                 rejection = str(e); result = None
                 tool_errors = 0
-                if call["name"] not in ("render", "tag_check", "history", "conclude"):
-                    bad_calls += 1
-                    if bad_calls >= 3:
-                        record["error"] = rejection; write_step(record)
-                        final = forced("BLOCKED", "bad_call"); continue
+                bad_calls += 1
+                if bad_calls >= 3:
+                    record["error"] = rejection; write_step(record)
+                    final = forced("BLOCKED", "bad_call"); continue
+            except ToolError as e:
+                rejection = str(e); result = None
+                tool_errors = bad_calls = 0
             except ComfyError as e:
                 tool_errors += 1
                 rejection = f"render failed: {e}"; result = None
+                bad_calls = 0
                 if tool_errors >= 2:
                     record["error"] = rejection; write_step(record)
                     final = forced("BLOCKED", "tool_error"); continue
