@@ -49,6 +49,18 @@ def test_trained_words_list_shape_with_comma_containing_entries(tmp_path):
     assert cat["loras"][0]["trigger"] == ["nier2b", "red eyes", "glowing eyes"]
 
 
+def test_trigger_list_stored_normalised_not_raw(tmp_path):
+    meta(tmp_path, "raw", civitai={"trainedWords": "Emilia_(Re:Zero), Grey_Hair", "model": {"nsfw": False}})
+    cat = c.build(tmp_path, WORKFLOWS, "t", "v", 0.35)
+    assert cat["loras"][0]["trigger"] == ["emilia (re:zero)", "grey hair"]
+
+
+def test_trigger_list_deduplicated_after_normalising(tmp_path):
+    meta(tmp_path, "dup", civitai={"trainedWords": "Nier_2B, nier 2b, other tag", "model": {"nsfw": False}})
+    cat = c.build(tmp_path, WORKFLOWS, "t", "v", 0.35)
+    assert cat["loras"][0]["trigger"] == ["nier 2b", "other tag"]
+
+
 def test_missing_trained_words_and_strength_defaults(tmp_path):
     meta(tmp_path, "bare", usage_tips="{}", civitai={"model": {"nsfw": False}})
     cat = c.build(tmp_path, WORKFLOWS, "t", "v", 0.35)

@@ -132,6 +132,27 @@ def test_tool_error_twice_blocked(make, tmp_path):
     assert out.verdict == "BLOCKED" and out.stop_reason == "tool_error" and out.render_id is None
 
 
+class FailingBackend:
+    def tag(self, path):
+        raise ComfyError("boom")
+
+
+def test_tag_check_comfy_error_message_names_tag_check_not_render(tmp_path, catalog_dict, vocab_path):
+    v = load_vocabulary(vocab_path)
+    task = Task(7, "pose", ["1girl", "on side"], 1001, 12, [])
+    results = Results(tmp_path / "tagfail.sqlite")
+    tools = Tools(catalog_dict, v, FakeComfy(), Tagger(FailingBackend(), 0.35, v), results, tmp_path, "agent-deepseek", 1, task)
+    prov = ScriptedProvider([
+        render_call(1001, "start"),
+        tc("tag_check", render_id="agent-deepseek-1-7-01"),
+        tc("tag_check", render_id="agent-deepseek-1-7-01")])
+    out = lp.run_task(task, tools.catalog, prov, tools, tmp_path / "run")
+    assert out.verdict == "BLOCKED" and out.stop_reason == "tool_error"
+    lines = [json.loads(l) for l in (tmp_path / "run/steps.jsonl").read_text().splitlines()]
+    assert lines[-1]["error"].startswith("tag_check failed:")
+    results.close()
+
+
 def test_wrong_render_arguments_count_as_bad_calls(make, tmp_path):
     bad = {"tool_call": {"name": "render", "arguments": {"workflow": "flux", "base": "x", "loras": [],
             "tags": [{"tag": "1girl"}], "seed": 1, "cfg": 6.0, "steps": 30, "claim": "start"}}}
@@ -146,7 +167,9 @@ def test_bad_calls_spread_out_do_not_block(make, tmp_path):
         tc("paint", x=1),
         render_call(1002, "knob:seed"), tc("tag_check", render_id="agent-deepseek-1-7-02"),
         tc("paint", x=1),
-        tc("conclude", verdict="ACHIEVED", render_id="agent-deepseek-1-7-02", missing="")])
+        render_call(1003, "knob:seed"), tc("tag_check", render_id="agent-deepseek-1-7-03"),
+        tc("paint", x=1),
+        tc("conclude", verdict="ACHIEVED", render_id="agent-deepseek-1-7-03", missing="")])
     out = lp.run_task(task, tools.catalog, prov, tools, tmp_path / "run")
     assert out.verdict == "ACHIEVED"
 

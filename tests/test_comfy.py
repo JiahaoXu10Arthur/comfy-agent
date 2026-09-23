@@ -96,9 +96,18 @@ def test_gpu_used_mb_none_on_unparseable_output(monkeypatch):
     assert cm.gpu_used_mb() is None
 
 
-def test_gpu_ok_passes_under_limit(monkeypatch):
-    monkeypatch.setattr(cm, "_nvidia_smi", lambda: "9000\n")
-    assert cm.gpu_ok(FakeStatsComfy(1024 * 1024 * 1024), limit_mb=10240) is True
+def test_gpu_used_mb_none_on_nvidia_smi_timeout(monkeypatch):
+    monkeypatch.setattr(cm.shutil, "which", lambda name: "/usr/bin/nvidia-smi")
+
+    def boom(*a, **k):
+        raise cm.subprocess.TimeoutExpired(cmd="nvidia-smi", timeout=20)
+    monkeypatch.setattr(cm.subprocess, "run", boom)
+    assert cm.gpu_used_mb() is None
+
+
+def test_gpu_ok_passes_under_limit_only_after_subtracting_comfy_share(monkeypatch):
+    monkeypatch.setattr(cm, "_nvidia_smi", lambda: "14000\n")
+    assert cm.gpu_ok(FakeStatsComfy(6000 * 1024 * 1024), limit_mb=10240) is True
 
 
 def test_gpu_ok_fails_over_limit(monkeypatch):

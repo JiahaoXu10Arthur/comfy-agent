@@ -33,6 +33,29 @@ def test_cells_counts_per_lora_match(catalog_dict):
     assert weights == {None, 1.4}
 
 
+def test_cells_does_not_duplicate_a_lora_trigger_that_differs_from_a_must_tag_by_case(catalog_dict):
+    t9 = Task(9, "character", ["1girl", "2B_(NieR:Automata)"], 1001, 12, ["2B_(NieR:Automata)"])
+    cells = grid.cells(t9, catalog_dict)
+    anima_with_lora = next(c for c in cells if c["workflow"] == "anima" and c["loras"])
+    assert [t["tag"] for t in anima_with_lora["tags"]] == ["1girl", "2B_(NieR:Automata)"]
+
+
+def test_run_grid_prompt_does_not_duplicate_a_lora_trigger_that_differs_from_a_must_tag_by_case(tmp_path, catalog_dict, vocab_path):
+    v = load_vocabulary(vocab_path)
+    comfy = FakeComfy()
+    tagger = Tagger(Backend(comfy, lambda g: {"1girl": 0.9}), 0.35, v)
+    res = Results(tmp_path / "r2.sqlite")
+    task = Task(9, "character", ["1girl", "2B_(NieR:Automata)"], 1001, 12, ["2B_(NieR:Automata)"])
+    grid.run_grid([task], catalog_dict, comfy, tagger, res, tmp_path, gpu_check=lambda: True)
+    lora_texts = [g["pos"]["inputs"]["text"] for g in comfy.graphs
+                  if "unet" in g and "<lora:nier2b_anima" in g["lora"]["inputs"]["lora_syntax"]]
+    assert lora_texts
+    for text in lora_texts:
+        assert "2B_(NieR:Automata)" in text
+        assert "2b (nier:automata)" not in text
+    res.close()
+
+
 def test_run_grid_marks_achievable_and_checks_gpu(tmp_path, catalog_dict, vocab_path):
     v = load_vocabulary(vocab_path)
     comfy = FakeComfy()

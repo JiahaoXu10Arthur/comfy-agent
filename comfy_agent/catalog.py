@@ -30,7 +30,12 @@ def read_metadata(path):
     words = civ.get("trainedWords") or ""
     if isinstance(words, list):
         words = ",".join(words)
-    trigger = [normalise(w) for w in words.split(",") if w.strip()]
+    trigger, seen = [], set()
+    for w in words.split(","):
+        n = normalise(w)
+        if n and n not in seen:
+            seen.add(n)
+            trigger.append(n)
     try:
         parsed = json.loads(d.get("usage_tips") or "{}")
         strength = float(parsed.get("strength", 1.0)) if isinstance(parsed, dict) else 1.0

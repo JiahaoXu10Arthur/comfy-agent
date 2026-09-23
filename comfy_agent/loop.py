@@ -130,7 +130,8 @@ def run_task(task, catalog, provider, tools, run_dir, max_turns=24, no_progress=
                 tool_errors = bad_calls = 0
             except ComfyError as e:
                 tool_errors += 1
-                rejection = f"render failed: {e}"; result = None
+                verb = "tag_check" if call["name"] == "tag_check" else "render"
+                rejection = f"{verb} failed: {e}"; result = None
                 bad_calls = 0
                 if tool_errors >= 2:
                     record["error"] = rejection; write_step(record)

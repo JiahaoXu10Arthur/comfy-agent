@@ -133,8 +133,11 @@ def _nvidia_smi():
     exe = shutil.which("nvidia-smi")
     if not exe:
         return None
-    return subprocess.run([exe, "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
-                          capture_output=True, text=True, timeout=20).stdout
+    try:
+        return subprocess.run([exe, "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
+                              capture_output=True, text=True, timeout=20).stdout
+    except subprocess.TimeoutExpired:
+        return None
 
 
 def gpu_used_mb():

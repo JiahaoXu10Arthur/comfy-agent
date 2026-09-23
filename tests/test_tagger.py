@@ -80,9 +80,10 @@ class FakeComfyServer(BaseHTTPRequestHandler):
             payload = json.loads(body)
             image = payload["prompt"]["1"]["inputs"]["image"]
             pid = uuid.uuid4().hex
+            outputs = {"2": {}} if FakeComfyServer.state.get("unparseable") else {"2": {"text": [f"tag_for_{image}"]}}
             FakeComfyServer.state["history"][pid] = {
                 "status": {"status_str": "success", "messages": []},
-                "outputs": {"2": {"text": [f"tag_for_{image}"]}},
+                "outputs": outputs,
             }
             return self._json({"prompt_id": pid})
         self._json({}, 404)
@@ -110,3 +111,14 @@ def test_comfy_backend_scores_each_image_independently(comfy_server, tmp_path):
     assert results[0] != results[2]
     for r, name in zip(results, ("first.png", "second.png", "third.png")):
         assert any(name in tag for tag in r)
+        assert any("staged_" in tag for tag in r)
+
+
+def test_backend_wraps_an_unparseable_tagger_response_as_comfy_error(comfy_server, tmp_path):
+    comfy = cm.Comfy(comfy_server, timeout=5)
+    backend = ComfyBackend(comfy, "wd-eva02-large-tagger-v3")
+    p = tmp_path / "x.png"
+    p.write_bytes(b"\x89PNGfake")
+    FakeComfyServer.state["unparseable"] = True
+    with pytest.raises(cm.ComfyError):
+        backend.tag(p)
