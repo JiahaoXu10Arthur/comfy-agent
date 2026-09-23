@@ -52,7 +52,7 @@ def run_grid(tasks, catalog, comfy, tagger, results, out_dir, gpu_check=cm.gpu_o
                 prompt = graph.build_prompt([t for t in c["tags"] if t["tag"] in task.must], triggers)
                 g = graph.apply(graphs[wfname], wf["base_node"], base, c["loras"], prompt, c["seed"], c["cfg"], c["steps"])
                 _, data = comfy.run(g)
-                rid = f"grid-0-{task.id}-{n:03d}"
+                rid = f"grid-0-{task.id}-{n:02d}"
                 png = out_dir / f"{rid}.png"; png.write_bytes(data)
                 results.add_render(rid, "grid", 0, task.id, n, factor_list(arm), "grid", str(png), 0.0)
                 results.add_tags(rid, tagger.judge(str(png), task.must))
