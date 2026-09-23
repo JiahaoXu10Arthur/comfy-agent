@@ -2,6 +2,8 @@
 import time
 from pathlib import Path
 
+from tagassert import normalise
+
 from . import catalog as cat
 from .comfy import ComfyError
 from .loop import Outcome
@@ -111,7 +113,8 @@ def run_ladder(task, catalog, tools, run_dir):
             cur_tags, cur_loras = weighted, []
             lora = cat.match_lora(catalog, wf["name"], task.must)
             if lora and tools.n_renders < task.budget:
-                trig = [{"tag": t, "weight": None} for t in lora["trigger"] if t not in {x["tag"] for x in weighted}]
+                have = {normalise(x["tag"]) for x in weighted}
+                trig = [{"tag": t, "weight": None} for t in lora["trigger"] if normalise(t) not in have]
                 cur_tags, cur_loras = trig + weighted, [{"file": lora["file"], "strength": lora["strength"]}]
                 row, landed = _step(tools, task, _base_args(catalog, wf, cur_tags, task.seed_hint, loras=cur_loras, claim=f"lora:{lora['file']}"), log); remember(row)
                 if landed:

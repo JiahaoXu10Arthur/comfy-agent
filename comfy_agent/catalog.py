@@ -28,7 +28,9 @@ def read_metadata(path):
         warnings.warn(f"{name}: base_model {d.get('base_model')!r} not supported, skipped")
         return None
     words = civ.get("trainedWords") or ""
-    trigger = [w.strip() for w in words.split(",") if w.strip()]
+    if isinstance(words, list):
+        words = ",".join(words)
+    trigger = [normalise(w) for w in words.split(",") if w.strip()]
     try:
         parsed = json.loads(d.get("usage_tips") or "{}")
         strength = float(parsed.get("strength", 1.0)) if isinstance(parsed, dict) else 1.0

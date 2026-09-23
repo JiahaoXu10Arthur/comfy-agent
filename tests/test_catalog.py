@@ -42,6 +42,13 @@ def test_build_skips_nsfw_missing_civitai_and_unknown_base(tmp_path):
     assert len(w) >= 2
 
 
+def test_trained_words_list_shape_with_comma_containing_entries(tmp_path):
+    meta(tmp_path, "nier2b_anima", base_model="Anima",
+         civitai={"trainedWords": ["nier2b,", "red eyes,glowing eyes"], "model": {"nsfw": False}})
+    cat = c.build(tmp_path, WORKFLOWS, "t", "v", 0.35)
+    assert cat["loras"][0]["trigger"] == ["nier2b", "red eyes", "glowing eyes"]
+
+
 def test_missing_trained_words_and_strength_defaults(tmp_path):
     meta(tmp_path, "bare", usage_tips="{}", civitai={"model": {"nsfw": False}})
     cat = c.build(tmp_path, WORKFLOWS, "t", "v", 0.35)

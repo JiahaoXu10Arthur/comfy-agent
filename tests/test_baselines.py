@@ -1,3 +1,4 @@
+import json
 import pytest
 from comfy_agent import baselines as bl
 from comfy_agent.comfy import ComfyError
@@ -93,6 +94,22 @@ def test_ladder_opens_matching_lora(make, tmp_path, catalog_dict):
     assert out.verdict == "ACHIEVED"
     g = comfy.graphs[-1]
     assert g["lora"]["inputs"]["lora_syntax"] == "<lora:nier2b_anima:1.00>" and g["pos"]["inputs"]["text"].startswith("(2b (nier:automata):1.3)")
+
+
+def test_ladder_lora_step_tolerates_trigger_case_mismatch(tmp_path, catalog_dict, vocab_path):
+    v = load_vocabulary(vocab_path)
+    cat2 = json.loads(json.dumps(catalog_dict))
+    for l in cat2["loras"]:
+        if l["file"] == "nier2b_anima":
+            l["trigger"] = ["2B (NieR:Automata)"]
+    task = Task(9, "character", ["1girl", "2b (nier:automata)"], 1001, 12)
+    comfy = FakeComfy()
+    rule = lambda g: 0.9 if "<lora:nier2b_anima" in g["lora"]["inputs"]["lora_syntax"] else 0.1
+    tools = Tools(cat2, v, comfy, Tagger(Backend(comfy, rule, key="2b (nier:automata)"), 0.35, v),
+                  Results(tmp_path / "case.sqlite"), tmp_path, "baseline-ladder", 1, task)
+    out = bl.run_ladder(task, cat2, tools, tmp_path / "l")
+    assert out.verdict == "ACHIEVED"
+    tools.results.close()
 
 
 def test_seed_baseline_retries_once_on_comfy_error(make, tmp_path, catalog_dict):

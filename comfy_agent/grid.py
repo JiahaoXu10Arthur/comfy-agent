@@ -3,6 +3,8 @@
 from itertools import groupby
 from pathlib import Path
 
+from tagassert import normalise
+
 from . import catalog as cat, comfy as cm, graph
 from .baselines import COUNT_TAGS
 from .factors import factor_list, arm_from_call
@@ -18,6 +20,7 @@ def _main(must):
 def cells(task, catalog):
     out = []
     mt = _main(task.must)
+    must_norm = {normalise(t) for t in task.must}
     for wf in catalog["workflows"]:
         lora = cat.match_lora(catalog, wf["name"], task.must)
         lora_axis = [[]] + ([[{"file": lora["file"], "strength": lora["strength"]}]] if lora else [])
@@ -26,7 +29,7 @@ def cells(task, catalog):
                 for w in WEIGHTS:
                     tags = [{"tag": t, "weight": (w if t == mt else None)} for t in task.must]
                     if loras:
-                        trig = [{"tag": t, "weight": None} for t in lora["trigger"] if t not in task.must]
+                        trig = [{"tag": t, "weight": None} for t in lora["trigger"] if normalise(t) not in must_norm]
                         tags = trig + tags
                     for s in range(SEEDS):
                         out.append({"workflow": wf["name"], "base": base, "loras": loras, "tags": tags,
@@ -45,11 +48,12 @@ def run_grid(tasks, catalog, comfy, tagger, results, out_dir, gpu_check=cm.gpu_o
             if not gpu_check():
                 raise RuntimeError("GPU busy: someone else is using more than the limit")
             wf = cat.workflow(catalog, wfname)
+            must_norm = {normalise(t) for t in task.must}
             for c in group:
                 n += 1
                 arm = arm_from_call(c)
-                triggers = [t["tag"] for t in c["tags"] if t["tag"] not in task.must]
-                prompt = graph.build_prompt([t for t in c["tags"] if t["tag"] in task.must], triggers)
+                triggers = [t["tag"] for t in c["tags"] if normalise(t["tag"]) not in must_norm]
+                prompt = graph.build_prompt([t for t in c["tags"] if normalise(t["tag"]) in must_norm], triggers)
                 g = graph.apply(graphs[wfname], wf["base_node"], base, c["loras"], prompt, c["seed"], c["cfg"], c["steps"])
                 _, data = comfy.run(g)
                 rid = f"grid-0-{task.id}-{n:02d}"

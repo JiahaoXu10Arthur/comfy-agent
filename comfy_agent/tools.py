@@ -2,6 +2,8 @@
 import time
 from pathlib import Path
 
+from tagassert import normalise
+
 from . import catalog as cat
 from . import factors, graph
 
@@ -73,8 +75,8 @@ class Tools:
                 raise ToolError(f"LoRA {f!r} is not in the catalog for workflow {wf['name']}")
             triggers += entry["trigger"]
         # trigger 已在 tags 里的不重复
-        tag_names = {t for t, _ in arm.tags}
-        triggers = [t for t in triggers if t not in tag_names]
+        tag_names = {normalise(t) for t, _ in arm.tags}
+        triggers = [t for t in triggers if normalise(t) not in tag_names]
         prompt = graph.build_prompt([{"tag": t, "weight": w} for t, w in arm.tags], triggers)
         g = graph.apply(self._graphs[wf["name"]], wf["base_node"], arm.base,
                         [{"file": f, "strength": s} for f, s in arm.loras], prompt, arm.seed, arm.cfg, arm.steps)
