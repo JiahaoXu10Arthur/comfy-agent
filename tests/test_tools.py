@@ -95,6 +95,14 @@ def test_conclude_rules(tools):
     assert tools.results.get(r2["render_id"])["verdict"] == "ACHIEVED"
 
 
+def test_conclude_rejects_a_model_supplied_blocked_verdict(tools):
+    r = tools.render(call())
+    tools.tag_check({"render_id": r["render_id"]})
+    with pytest.raises(tl.BadCall, match="verdict must be one of"):
+        tools.conclude({"verdict": "BLOCKED", "render_id": r["render_id"], "missing": ""})
+    assert tools.results.get(r["render_id"])["verdict"] is None
+
+
 def test_conclude_ignores_a_model_supplied_stop_reason(tools):
     r = tools.render(call())
     tools.tag_check({"render_id": r["render_id"]})

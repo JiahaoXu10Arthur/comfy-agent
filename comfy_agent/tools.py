@@ -8,6 +8,7 @@ from . import catalog as cat
 from . import factors, graph
 
 VERDICTS = ("ACHIEVED", "NOT_ACHIEVABLE_HERE", "BUDGET_EXHAUSTED", "BLOCKED")
+MODEL_VERDICTS = ("ACHIEVED", "NOT_ACHIEVABLE_HERE", "BUDGET_EXHAUSTED")
 
 _TAGS = {"type": "array", "items": {"type": "object", "properties": {
     "tag": {"type": "string"}, "weight": {"type": ["number", "null"]}}, "required": ["tag"]}}
@@ -30,7 +31,7 @@ TOOL_SCHEMAS = [
     {"type": "function", "function": {"name": "conclude", "description":
         "Stop. verdict ACHIEVED needs a render_id whose tags all LANDED. NOT_ACHIEVABLE_HERE needs missing: what the catalog lacks.",
         "parameters": {"type": "object", "properties": {
-            "verdict": {"type": "string", "enum": list(VERDICTS)}, "render_id": {"type": ["string", "null"]}, "missing": {"type": "string"}},
+            "verdict": {"type": "string", "enum": list(MODEL_VERDICTS)}, "render_id": {"type": ["string", "null"]}, "missing": {"type": "string"}},
             "required": ["verdict", "render_id", "missing"]}}},
 ]
 
@@ -45,6 +46,10 @@ class BadCall(ToolError):
     to another task). Counts toward loop.py's three-consecutive-bad-calls BLOCK; a gate
     rejection (single_factor, conclude refusal) does not."""
     pass
+
+
+def evidence_for(row):
+    return f"render {row['render_id']}: " + ", ".join(f"{t} {v} {s:.2f}" for t, (v, s) in row["scores"].items())
 
 
 class Tools:
@@ -124,22 +129,17 @@ class Tools:
 
     def conclude(self, args, stop_reason="model"):
         verdict = args.get("verdict")
-        if verdict not in VERDICTS:
-            raise BadCall(f"verdict must be one of {VERDICTS}")
+        if verdict not in MODEL_VERDICTS:
+            raise BadCall(f"verdict must be one of {MODEL_VERDICTS}")
         missing = (args.get("missing") or "").strip()
         rid = args.get("render_id")
-        row = None
-        if verdict != "BLOCKED" or rid:
-            row = self._own(rid)
-        if verdict == "ACHIEVED" and not (row and row["all_landed"]):
+        row = self._own(rid)
+        if verdict == "ACHIEVED" and not row["all_landed"]:
             raise ToolError("ACHIEVED refused: that render does not have every tag LANDED (run tag_check first)")
         if verdict == "NOT_ACHIEVABLE_HERE" and not (0 < len(missing) <= 200):
             raise ToolError("NOT_ACHIEVABLE_HERE needs missing: one sentence, 1-200 chars")
-        evidence = ""
-        if row:
-            evidence = f"render {row['render_id']}: " + ", ".join(
-                f"{t} {v} {s:.2f}" for t, (v, s) in row["scores"].items())
-            self.results.set_conclusion(row["render_id"], verdict, stop_reason, missing)
+        evidence = evidence_for(row)
+        self.results.set_conclusion(row["render_id"], verdict, stop_reason, missing)
         return {"verdict": verdict, "render_id": rid, "evidence": evidence, "missing": missing}
 
     def dispatch(self, name, args):

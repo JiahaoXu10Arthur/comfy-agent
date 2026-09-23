@@ -167,6 +167,14 @@ def test_ladder_blocked_after_two_comfy_errors_with_prior_render(make, tmp_path,
     assert (run_dir / "summary.md").exists()
 
 
+def test_ladder_blocked_writes_conclusion_to_results_without_going_through_conclude(make, tmp_path, catalog_dict):
+    task, tools, comfy = make(lambda g: 0.1, arm="baseline-ladder-blocked3", fail_on=(2, 3))
+    out = bl.run_ladder(task, catalog_dict, tools, tmp_path / "l")
+    assert out.verdict == "BLOCKED" and out.stop_reason == "tool_error" and out.render_id
+    row = tools.results.get(out.render_id)
+    assert row["verdict"] == "BLOCKED" and row["stop_reason"] == "tool_error"
+
+
 def test_step_reraises_tool_error_as_runtime_error(make, tmp_path, catalog_dict):
     task, tools, comfy = make(lambda g: 0.9)
     bad_args = bl._base_args(catalog_dict, catalog_dict["workflows"][0],

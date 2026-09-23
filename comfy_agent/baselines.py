@@ -8,7 +8,7 @@ from tagassert import normalise
 from . import catalog as cat
 from .comfy import ComfyError
 from .loop import Outcome
-from .tools import ToolError
+from .tools import ToolError, evidence_for
 
 COUNT_TAGS = {"1girl", "2girls", "2boys", "3girls"}
 
@@ -49,10 +49,18 @@ def _step(tools, task, args, log, steps_file):
 
 
 def _finish(tools, task, run_dir, log, t0, verdict, reason, rid, missing=""):
+    """verdict BLOCKED is code-forced (I10 v3.1: only code may issue it), so it writes
+    through results.set_conclusion directly instead of tools.conclude, which now rejects
+    BLOCKED as it would a model call."""
     ev = ""
     if rid:
-        out = tools.conclude({"verdict": verdict, "render_id": rid, "missing": missing}, stop_reason=reason)
-        ev = out["evidence"]
+        if verdict == "BLOCKED":
+            row = tools.results.get(rid)
+            ev = evidence_for(row)
+            tools.results.set_conclusion(rid, verdict, reason, missing)
+        else:
+            out = tools.conclude({"verdict": verdict, "render_id": rid, "missing": missing}, stop_reason=reason)
+            ev = out["evidence"]
     Path(run_dir).mkdir(parents=True, exist_ok=True)
     (Path(run_dir) / "summary.md").write_text(
         f"task {task.id}   must: {', '.join(task.must)}   budget {task.budget}\nmodel none ({tools.arm})\n\n"
