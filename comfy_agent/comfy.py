@@ -7,6 +7,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from pathlib import Path
 
 _TRANSPORT_ERRORS = (urllib.error.HTTPError, urllib.error.URLError, TimeoutError)
 
@@ -57,14 +58,16 @@ class Comfy:
         except Exception:
             return False
 
-    def run(self, graph):
+    def _submit(self, graph):
         try:
             out = self._post("/prompt", {"prompt": graph, "client_id": self.client_id})
         except _TRANSPORT_ERRORS as e:
             raise ComfyError(f"ComfyUI unreachable or refused: {e}") from e
         if "prompt_id" not in out:
             raise ComfyError(f"ComfyUI rejected the graph: {out}")
-        pid = out["prompt_id"]
+        return out["prompt_id"]
+
+    def _wait_history(self, pid):
         deadline = time.time() + self.timeout
         hist = {}
         while time.time() < deadline:
@@ -80,6 +83,11 @@ class Comfy:
         status = hist.get("status", {})
         if status.get("status_str") == "error":
             raise ComfyError(f"execution failed: {status.get('messages')}")
+        return hist
+
+    def run(self, graph):
+        pid = self._submit(graph)
+        hist = self._wait_history(pid)
         for node_out in hist.get("outputs", {}).values():
             for img in node_out.get("images", []):
                 if img.get("type") == "temp":
@@ -91,7 +99,32 @@ class Comfy:
                         return img["filename"], r.read()
                 except _TRANSPORT_ERRORS as e:
                     raise ComfyError(f"ComfyUI unreachable or refused: {e}") from e
-        raise ComfyError(f"run {pid} produced no images; status={status}")
+        raise ComfyError(f"run {pid} produced no images; status={hist.get('status', {})}")
+
+    def run_for_outputs(self, graph):
+        """Submit a graph that produces no image (e.g. the tagger graph) and return its outputs dict,
+        scoped to this prompt's own /history/{prompt_id} entry."""
+        pid = self._submit(graph)
+        return self._wait_history(pid).get("outputs", {})
+
+    def upload_image(self, path):
+        """POST /upload/image (multipart) and return the name ComfyUI stored it under."""
+        boundary = uuid.uuid4().hex
+        data = Path(path).read_bytes()
+        filename = Path(path).name
+        body = (f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="image"; filename="{filename}"\r\n'
+                f"Content-Type: image/png\r\n\r\n").encode() + data + f"\r\n--{boundary}--\r\n".encode()
+        req = urllib.request.Request(f"http://{self.host}/upload/image", data=body,
+                                     headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                out = json.loads(r.read())
+        except _TRANSPORT_ERRORS as e:
+            raise ComfyError(f"ComfyUI unreachable or refused: {e}") from e
+        if "name" not in out:
+            raise ComfyError(f"ComfyUI rejected the upload: {out}")
+        return out["name"]
 
 
 def _nvidia_smi():

@@ -25,7 +25,7 @@ def _ctx(a):
     catalog = cat.load(a.catalog)
     vocab = load_vocabulary(catalog["vocabulary"])
     comfy = cm.Comfy(a.comfy)
-    tagger = Tagger(comfy_backend(f"http://{a.comfy}", catalog["tagger"]), catalog["threshold"], vocab)
+    tagger = Tagger(comfy_backend(comfy, catalog["tagger"]), catalog["threshold"], vocab)
     results = Results(Path(a.out) / "results.sqlite")
     return catalog, vocab, comfy, tagger, results
 
