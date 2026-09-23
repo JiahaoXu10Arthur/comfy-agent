@@ -74,14 +74,20 @@ def run_task(task, catalog, provider, tools, run_dir, max_turns=24, no_progress=
         return finish(verdict, reason, task_best_rid, missing)
 
     def write_step(record):
-        steps.write(json.dumps({"turn": record["turn"], "tool": record["tool"], "args": record["args"],
-                                "result": record.get("result"), "error": record.get("error")}, ensure_ascii=False) + "\n")
+        line = {"turn": record["turn"], "tool": record["tool"], "args": record.get("args"),
+                "result": record.get("result"), "error": record.get("error"),
+                "model_text": record.get("model_text", ""), "usage": record.get("usage"),
+                "seconds": round(time.time() - turn_t0, 3)}
+        if record["tool"] == "render" and record.get("dispatched"):
+            line["graph"] = tools.last_graph
+        steps.write(json.dumps(line, ensure_ascii=False) + "\n")
 
     try:
         while final is None:
             if turns >= max_turns:
                 final = forced("BUDGET_EXHAUSTED", "turns"); break
             messages = build_messages(task, catalog, tried, last, rejection, tools.n_renders)
+            turn_t0 = time.time()
             try:
                 resp = provider.chat(messages, TOOL_SCHEMAS)
             except ProviderError:
@@ -89,7 +95,8 @@ def run_task(task, catalog, provider, tools, run_dir, max_turns=24, no_progress=
             turns += 1; calls += 1
             pt += resp["usage"]["prompt_tokens"]; ct += resp["usage"]["completion_tokens"]
             call = resp.get("tool_call")
-            record = {"turn": turns, "tool": call["name"] if call else None, "args": call["arguments"] if call else resp.get("text")}
+            record = {"turn": turns, "tool": call["name"] if call else None, "args": call["arguments"] if call else None,
+                      "model_text": resp.get("text", ""), "usage": resp["usage"]}
             if not call or not isinstance(call.get("arguments"), dict) or "_unparseable" in call["arguments"]:
                 bad_calls += 1
                 rejection = "reply with exactly one tool call in the tools format"
@@ -101,6 +108,7 @@ def run_task(task, catalog, provider, tools, run_dir, max_turns=24, no_progress=
                 rejection = "budget exhausted"
                 record["error"] = rejection; write_step(record)
                 final = forced("BUDGET_EXHAUSTED", "budget"); continue
+            record["dispatched"] = True
             try:
                 result = tools.dispatch(call["name"], call["arguments"])
                 rejection = None

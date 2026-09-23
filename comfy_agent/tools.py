@@ -51,13 +51,14 @@ class Tools:
     def __init__(self, catalog, vocabulary, comfy, tagger, results, out_dir, arm, run, task):
         self.catalog, self.vocabulary, self.comfy, self.tagger, self.results = catalog, vocabulary, comfy, tagger, results
         self.out_dir, self.arm, self.run, self.task = Path(out_dir), arm, run, task
-        self.last_arm, self.n_renders = None, 0
+        self.last_arm, self.n_renders, self.last_graph = None, 0, None
         self._graphs = {w["name"]: graph.load_graph(w["graph"]) for w in catalog["workflows"]}
 
     def _render_id(self, n):
         return f"{self.arm}-{self.run}-{self.task.id}-{n:02d}"
 
     def render(self, args):
+        self.last_graph = None
         try:
             wf = cat.workflow(self.catalog, args["workflow"])
         except KeyError:
@@ -88,6 +89,7 @@ class Tools:
         prompt = graph.build_prompt([{"tag": t, "weight": w} for t, w in arm.tags], triggers)
         g = graph.apply(self._graphs[wf["name"]], wf["base_node"], arm.base,
                         [{"file": f, "strength": s} for f, s in arm.loras], prompt, arm.seed, arm.cfg, arm.steps)
+        self.last_graph = g
         t0 = time.time()
         _, data = self.comfy.run(g)
         seconds = round(time.time() - t0, 1)

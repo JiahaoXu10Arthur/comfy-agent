@@ -66,6 +66,22 @@ def test_achieves_and_writes_summary(make, tmp_path, catalog_dict):
     assert "on side" in json.dumps(prov.seen[2], ensure_ascii=False)
 
 
+def test_steps_jsonl_carries_the_full_record(make, tmp_path):
+    task, prov, tools = make([0.9], [
+        render_call(1001, "start"), tc("tag_check", render_id="agent-deepseek-1-7-01"),
+        tc("conclude", verdict="ACHIEVED", render_id="agent-deepseek-1-7-01", missing="")])
+    lp.run_task(task, tools.catalog, prov, tools, tmp_path / "run")
+    lines = [json.loads(l) for l in (tmp_path / "run/steps.jsonl").read_text().splitlines()]
+    common_keys = {"turn", "tool", "args", "result", "error", "model_text", "usage", "seconds"}
+    for line in lines:
+        assert common_keys <= set(line)
+        assert set(line["usage"]) == {"prompt_tokens", "completion_tokens"}
+    render_line, tag_check_line = lines[0], lines[1]
+    assert render_line["tool"] == "render" and "graph" in render_line
+    assert render_line["graph"]["pos"]["inputs"]["text"] == "1girl, on side"
+    assert tag_check_line["tool"] == "tag_check" and "graph" not in tag_check_line
+
+
 def test_no_progress_forces_not_achievable(make, tmp_path):
     task, prov, tools = make([0.10, 0.11, 0.115, 0.118], [
         render_call(1001, "start"), tc("tag_check", render_id="agent-deepseek-1-7-01"),

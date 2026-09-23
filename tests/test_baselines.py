@@ -62,6 +62,19 @@ def test_seed_baseline_stops_when_landed(make, tmp_path, catalog_dict):
     assert all(g["ckpt"]["inputs"]["ckpt_name"] == "ChenkinNoob-XL-V0.5.safetensors" for g in comfy.graphs)
 
 
+def test_seed_baseline_writes_steps_jsonl(make, tmp_path, catalog_dict):
+    task, tools, comfy = make(lambda g: 0.9 if g["ks"]["inputs"]["seed"] == 1003 else 0.1, arm="baseline-seed")
+    run_dir = tmp_path / "s"
+    bl.run_seed_baseline(task, catalog_dict, tools, run_dir)
+    lines = [json.loads(l) for l in (run_dir / "steps.jsonl").read_text().splitlines()]
+    assert len(lines) == 3
+    for line in lines:
+        assert set(line) == {"n", "claim", "args", "graph", "scores", "seconds"}
+        assert line["graph"]["ckpt"]["inputs"]["ckpt_name"] == "ChenkinNoob-XL-V0.5.safetensors"
+    assert [l["n"] for l in lines] == [1, 2, 3]
+    assert lines[-1]["scores"]["on side"][0] == "LANDED"
+
+
 def test_seed_baseline_exhausts(make, tmp_path, catalog_dict):
     task, tools, _ = make(lambda g: 0.1, budget=4, arm="baseline-seed")
     out = bl.run_seed_baseline(task, catalog_dict, tools, tmp_path / "s")
@@ -154,7 +167,7 @@ def test_step_reraises_tool_error_as_runtime_error(make, tmp_path, catalog_dict)
                              [{"tag": t, "weight": None} for t in task.must], task.seed_hint)
     bad_args["workflow"] = "not-a-workflow"
     with pytest.raises(RuntimeError, match="baseline produced a render the gate rejected"):
-        bl._step(tools, task, bad_args, [])
+        bl._step(tools, task, bad_args, [], None)
     assert comfy.graphs == []
 
 
