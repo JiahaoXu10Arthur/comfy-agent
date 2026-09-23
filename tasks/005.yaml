@@ -1,0 +1,5 @@
+id: 5
+category: count
+must: [3girls, sitting]
+seed_hint: 1001
+budget: 12

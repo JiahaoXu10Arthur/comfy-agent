@@ -1,0 +1,5 @@
+id: 7
+category: pose
+must: [1girl, on side]
+seed_hint: 1001
+budget: 12
