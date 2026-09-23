@@ -26,6 +26,27 @@ def test_metrics_and_conclusion():
     assert ev.conclusion_sentence(m) == "旋钮档 agent 比写死阶梯省渲染、判得准"
 
 
+def test_switched_ignores_lora_strength_but_not_file_workflow_base():
+    same_file = [{"factors": ["workflow:sdxl", "base:A", "lora:fileA:1.00"]},
+                 {"factors": ["workflow:sdxl", "base:A", "lora:fileA:1.30"]}]
+    assert ev._switched(same_file) is False
+
+    diff_lora_file = [{"factors": ["workflow:sdxl", "base:A", "lora:fileA:1.00"]},
+                       {"factors": ["workflow:sdxl", "base:A", "lora:fileB:1.00"]}]
+    assert ev._switched(diff_lora_file) is True
+
+    diff_base = [{"factors": ["workflow:sdxl", "base:A"]},
+                 {"factors": ["workflow:sdxl", "base:B"]}]
+    assert ev._switched(diff_base) is True
+
+    diff_workflow = [{"factors": ["workflow:sdxl", "base:A"]},
+                      {"factors": ["workflow:anima", "base:A"]}]
+    assert ev._switched(diff_workflow) is True
+
+    single_render = [{"factors": ["workflow:sdxl", "base:A"]}]
+    assert ev._switched(single_render) is False
+
+
 def test_conclusion_variants():
     base = {"avg_renders": 5.0, "error_rate": 0.2}
     assert "不需要 agent" in ev.conclusion_sentence({"agent-deepseek": {"avg_renders": 5.0, "error_rate": 0.2}, "baseline-ladder": base})
@@ -39,3 +60,4 @@ def test_write_report(tmp_path):
     ev.write_report(tmp_path / "report.md", m, {"renders": 1200, "minutes": 95.5, "dollars": 0.42})
     text = (tmp_path / "report.md").read_text(encoding="utf-8")
     assert "agent-deepseek" in text and "总耗时 95.5 分钟" in text and "pass^3" in text and "旋钮档 agent 比写死阶梯省渲染、判得准" in text
+    assert "按 deepseek-chat 标价估" in text

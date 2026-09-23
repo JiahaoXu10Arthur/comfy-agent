@@ -9,6 +9,17 @@ ARMS = ("agent-deepseek", "agent-qwen", "baseline-seed", "baseline-ladder")
 LADDER, AGENT = "baseline-ladder", "agent-deepseek"
 
 
+def _lora_files(factors):
+    """`lora:<file>:<strength>` -> file, dropping the strength suffix (spec §9: 调强度不算)."""
+    return {f[len("lora:"):].rsplit(":", 1)[0] for f in factors if f.startswith("lora:")}
+
+
+def _switched(rends):
+    """Whether workflow, base, or a LoRA *file* changed between any two consecutive renders."""
+    return any(a["factors"][:2] != b["factors"][:2] or _lora_files(a["factors"]) != _lora_files(b["factors"])
+               for a, b in zip(rends, rends[1:]))
+
+
 def run_eval(tasks, catalog, arms, runs, make_provider, make_tools, results, out_dir):
     rows = []
     for arm in arms:
@@ -25,9 +36,7 @@ def run_eval(tasks, catalog, arms, runs, make_provider, make_tools, results, out
                     o = loop.run_task(task, catalog, make_provider(arm), tools, run_dir)
                 rends = results.renders(arm, r, task.id)
                 claims = [x["claim"] for x in rends]
-                switched = any(a["factors"][:2] != b["factors"][:2] or
-                               {f for f in a["factors"] if f.startswith("lora:")} != {f for f in b["factors"] if f.startswith("lora:")}
-                               for a, b in zip(rends, rends[1:]))
+                switched = _switched(rends)
                 used_history = any('"tool": "history"' in line for line in
                                    (run_dir / "steps.jsonl").read_text(encoding="utf-8").splitlines()) if (run_dir / "steps.jsonl").exists() else False
                 rows.append({"arm": arm, "run": r, "task_id": task.id, "verdict": o.verdict, "stop_reason": o.stop_reason,
@@ -82,7 +91,7 @@ def write_report(path, m, totals):
     for arm, x in m.items():
         lines.append(f"| {arm} | {x['correct_rate']:.2f} | {x['avg_renders']:.1f} | {x['switched']}/{x['n']} | {x['used_history']}/{x['n']} | "
                      f"{x['seed_only']}/{x['n']*3} | {x['error_rate']:.2f} | {x['pass3']}/{x['n']} | {x['blocked']}/{x['n']*3} |")
-    lines += ["", f"总渲染 {totals['renders']} 张，总耗时 {totals['minutes']} 分钟，总花费 ${totals['dollars']}（含网格）", "",
+    lines += ["", f"总渲染 {totals['renders']} 张，总耗时 {totals['minutes']} 分钟，总花费 ${totals['dollars']}（含网格；按 deepseek-chat 标价估）", "",
               "pass^3 = 三遍结论都正确的任务数（τ-bench 定义，不是 pass@3）。BLOCKED 的运行剔除后算其它列。n 小，只做定性。", "",
               "结论：" + (conclusion_sentence(m) if AGENT in m and LADDER in m else "（缺 agent-deepseek 或 baseline-ladder，不下结论）")]
     Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")

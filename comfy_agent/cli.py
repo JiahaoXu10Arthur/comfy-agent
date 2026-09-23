@@ -79,7 +79,8 @@ def main(argv=None):
             m = ev.metrics(rows, truth, [t.id for t in tasks])
             n_grid = sum(len(results.renders("grid", 0, t.id)) for t in tasks)
             totals = {"renders": sum(r["renders"] for r in rows) + n_grid, "minutes": round((time.time() - t0) / 60, 1),
-                      "dollars": round(sum(r["prompt_tokens"] * 0.27e-6 + r["completion_tokens"] * 1.1e-6 for r in rows), 3)}
+                      "dollars": round(sum(r["prompt_tokens"] * 0.27e-6 + r["completion_tokens"] * 1.1e-6
+                                           for r in rows if r["arm"] == ev.AGENT), 3)}
             ev.write_report(Path(a.out) / "report.md", m, totals)
             (Path(a.out) / "rows.json").write_text(json.dumps(rows, ensure_ascii=False, indent=1), encoding="utf-8")
             print(ev.conclusion_sentence(m) if ev.AGENT in m and ev.LADDER in m else m); return 0
