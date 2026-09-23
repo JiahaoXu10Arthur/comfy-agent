@@ -84,3 +84,29 @@ def test_gpu_used_zero_without_nvidia_smi(monkeypatch):
 def test_run_raises_comfy_error_on_transport_failure():
     with pytest.raises(cm.ComfyError):
         cm.Comfy("127.0.0.1:1", timeout=1).run({})
+
+
+def test_run_wraps_oserror_not_just_url_error(monkeypatch):
+    def boom(*a, **k):
+        raise ConnectionResetError("reset by peer")
+    monkeypatch.setattr(cm.urllib.request, "urlopen", boom)
+    with pytest.raises(cm.ComfyError):
+        cm.Comfy("127.0.0.1:1", timeout=1).run({})
+
+
+def test_run_wraps_bad_json_from_history():
+    class Handler(Fake):
+        def do_GET(self):
+            if self.path.startswith("/history/"):
+                self.send_response(200); self.send_header("Content-Type", "application/json")
+                self.end_headers(); self.wfile.write(b"not json")
+                return
+            super().do_GET()
+    Fake.state = {"queued": [], "done": {}, "fail": False}
+    srv = HTTPServer(("127.0.0.1", 0), Handler)
+    t = threading.Thread(target=srv.serve_forever, daemon=True); t.start()
+    try:
+        with pytest.raises(cm.ComfyError):
+            cm.Comfy(f"127.0.0.1:{srv.server_port}", timeout=2).run({})
+    finally:
+        srv.shutdown(); srv.server_close(); t.join(timeout=5)

@@ -7,6 +7,7 @@ from tagassert import normalise
 from . import catalog as cat
 from .comfy import ComfyError
 from .loop import Outcome
+from .tools import ToolError
 
 COUNT_TAGS = {"1girl", "2girls", "2boys", "3girls"}
 
@@ -34,6 +35,8 @@ def _step(tools, task, args, log):
             r = tools.render(args)
         except ComfyError:
             raise _Blocked()
+    except ToolError as e:
+        raise RuntimeError(f"baseline produced a render the gate rejected: {e}") from e
     t = tools.tag_check({"render_id": r["render_id"]})
     log.append(f"{r['n']:02d} | {args['claim']} | min {t['min_score']}")
     return tools.results.get(r["render_id"]), t["all_landed"]

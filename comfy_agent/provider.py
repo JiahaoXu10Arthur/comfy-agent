@@ -56,6 +56,10 @@ class Provider:
                 if attempt == 3:
                     raise ProviderError(f"rate limited 4 times: {e}") from e
                 time.sleep(delay); delay *= 4
+            except openai.APIError as e:
+                raise ProviderError(f"provider error: {e}") from e
+        if not resp.choices:
+            raise ProviderError("provider returned no choices")
         msg = resp.choices[0].message
         call = None
         if msg.tool_calls:

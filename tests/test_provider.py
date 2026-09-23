@@ -82,6 +82,24 @@ def test_cassette_replay_miss_raises_without_calling_model(tmp_path):
     assert p.client.chat.completions.calls == 0
 
 
+def test_connection_error_raises_provider_error_without_retry():
+    import httpx2
+    import openai
+    req = httpx2.Request("POST", "http://x")
+    p = make([openai.APIConnectionError(request=req)])
+    with pytest.raises(pv.ProviderError):
+        p.chat([], [])
+    assert p.client.chat.completions.calls == 1
+
+
+def test_empty_choices_raises_provider_error():
+    class Empty:
+        choices = []
+    p = make([Empty()])
+    with pytest.raises(pv.ProviderError, match="no choices"):
+        p.chat([], [])
+
+
 def test_from_env_deepseek(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_API_KEY", "k")
     p = pv.from_env("deepseek")

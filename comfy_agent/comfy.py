@@ -3,13 +3,12 @@ import json
 import shutil
 import subprocess
 import time
-import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
 from pathlib import Path
 
-_TRANSPORT_ERRORS = (urllib.error.HTTPError, urllib.error.URLError, TimeoutError)
+_TRANSPORT_ERRORS = (OSError, ValueError)
 
 
 class ComfyError(RuntimeError):

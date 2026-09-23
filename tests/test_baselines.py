@@ -148,6 +148,16 @@ def test_ladder_blocked_after_two_comfy_errors_with_prior_render(make, tmp_path,
     assert (run_dir / "summary.md").exists()
 
 
+def test_step_reraises_tool_error_as_runtime_error(make, tmp_path, catalog_dict):
+    task, tools, comfy = make(lambda g: 0.9)
+    bad_args = bl._base_args(catalog_dict, catalog_dict["workflows"][0],
+                             [{"tag": t, "weight": None} for t in task.must], task.seed_hint)
+    bad_args["workflow"] = "not-a-workflow"
+    with pytest.raises(RuntimeError, match="baseline produced a render the gate rejected"):
+        bl._step(tools, task, bad_args, [])
+    assert comfy.graphs == []
+
+
 def test_main_tag():
     assert bl.main_tag({"1girl": ("LANDED", 0.9), "on side": ("MISSING", 0.1), "smile": ("MISSING", 0.2)}, ["1girl", "on side", "smile"]) == "on side"
     assert bl.main_tag({"1girl": ("LANDED", 0.9), "on side": ("LANDED", 0.5)}, ["1girl", "on side"]) == "on side"
