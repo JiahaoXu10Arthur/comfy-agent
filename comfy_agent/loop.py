@@ -33,11 +33,16 @@ class Outcome:
     seconds: float
 
 
+def _score_cell(k, v):
+    mark = "" if v[0] == "LANDED" else "!"
+    return f"{k}={v[1]:.2f}{mark}"
+
+
 def build_messages(task, catalog, tried, last, rejection, n_renders):
     sys_msg = SYSTEM_PROMPT.format(threshold=catalog["threshold"], budget=task.budget)
     wfs = "\n".join(f"{w['name']}: bases {w['bases']}; defaults {w['defaults']}" for w in catalog["workflows"])
     table = "\n".join(f"{t['n']:02d} | {t['claim']} | {' '.join(t['factors'])} | "
-                      f"{' '.join(f'{k}={v[1]:.2f}{'' if v[0]=='LANDED' else '!'}' for k, v in t['scores'].items())} | min {t['min_score']}"
+                      f"{' '.join(_score_cell(k, v) for k, v in t['scores'].items())} | min {t['min_score']}"
                       for t in tried) or "(none yet)"
     user = (f"Task {task.id} ({task.category}). must: {', '.join(task.must)}. budget {task.budget}, used {n_renders}.\n"
             f"Workflows:\n{wfs}\nLoRAs (file | workflow | trigger | kind):\n{cat.for_model(catalog)}\n"
