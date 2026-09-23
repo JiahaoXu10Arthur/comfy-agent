@@ -33,13 +33,13 @@ class Outcome:
     seconds: float
 
 
-def build_messages(task, catalog, tried, last, rejection):
+def build_messages(task, catalog, tried, last, rejection, n_renders):
     sys_msg = SYSTEM_PROMPT.format(threshold=catalog["threshold"], budget=task.budget)
     wfs = "\n".join(f"{w['name']}: bases {w['bases']}; defaults {w['defaults']}" for w in catalog["workflows"])
     table = "\n".join(f"{t['n']:02d} | {t['claim']} | {' '.join(t['factors'])} | "
                       f"{' '.join(f'{k}={v[1]:.2f}{'' if v[0]=='LANDED' else '!'}' for k, v in t['scores'].items())} | min {t['min_score']}"
                       for t in tried) or "(none yet)"
-    user = (f"Task {task.id} ({task.category}). must: {', '.join(task.must)}. budget {task.budget}, used {len(tried)}.\n"
+    user = (f"Task {task.id} ({task.category}). must: {', '.join(task.must)}. budget {task.budget}, used {n_renders}.\n"
             f"Workflows:\n{wfs}\nLoRAs (file | workflow | trigger | kind):\n{cat.for_model(catalog)}\n"
             f"Tried so far (n | claim | factors | scores, ! = MISSING | min):\n{table}\n")
     if last is not None:
@@ -53,24 +53,25 @@ def run_task(task, catalog, provider, tools, run_dir, max_turns=24, no_progress=
     run_dir = Path(run_dir); run_dir.mkdir(parents=True, exist_ok=True)
     steps = open(run_dir / "steps.jsonl", "w", encoding="utf-8")
     t0 = time.time()
-    tried, last, rejection = [], None, None
+    tried, checked_ids, last, rejection = [], set(), None, None
     turns = calls = pt = ct = 0
     bad_calls = tool_errors = 0
-    best_m, stale, best_rid = None, 0, None
+    best_m, stale = None, 0                        # per-branch: resets on every restart
+    task_best_m, task_best_rid = None, None         # task-wide: highest m ever seen, never resets
     final = None
 
     def finish(verdict, reason, rid, missing, evidence=""):
         return Outcome(verdict, reason, rid, missing, evidence, tools.n_renders, turns, calls, pt, ct, round(time.time() - t0, 1))
 
     def forced(verdict, reason):
-        row = tools.results.get(best_rid) if best_rid else None
+        row = tools.results.get(task_best_rid) if task_best_rid else None
         missing = ""
         if verdict == "NOT_ACHIEVABLE_HERE" and row:
             tag = min(row["scores"], key=lambda k: row["scores"][k][1])
-            missing = f"最低分 tag {tag} 最高 {row['scores'][tag][1]:.2f}（render {best_rid}）"
+            missing = f"最低分 tag {tag} 最高 {row['scores'][tag][1]:.2f}（render {task_best_rid}）"
         if row:
-            tools.results.set_conclusion(best_rid, verdict, reason, missing)
-        return finish(verdict, reason, best_rid, missing)
+            tools.results.set_conclusion(task_best_rid, verdict, reason, missing)
+        return finish(verdict, reason, task_best_rid, missing)
 
     def write_step(record):
         steps.write(json.dumps({"turn": record["turn"], "tool": record["tool"], "args": record["args"],
@@ -80,7 +81,7 @@ def run_task(task, catalog, provider, tools, run_dir, max_turns=24, no_progress=
         while final is None:
             if turns >= max_turns:
                 final = forced("BUDGET_EXHAUSTED", "turns"); break
-            messages = build_messages(task, catalog, tried, last, rejection)
+            messages = build_messages(task, catalog, tried, last, rejection, tools.n_renders)
             try:
                 resp = provider.chat(messages, TOOL_SCHEMAS)
             except ProviderError:
@@ -131,19 +132,21 @@ def run_task(task, catalog, provider, tools, run_dir, max_turns=24, no_progress=
                     best_m, stale = None, 0            # restart: new branch, new baseline
             if call["name"] == "tag_check":
                 row = tools.results.get(result["render_id"])
-                tried.append({"n": row["n"], "claim": row["claim"], "factors": row["factors"],
-                              "scores": row["scores"], "min_score": row["min_score"]})
                 if any(v[0] == "NOT_JUDGEABLE" for v in row["scores"].values()):
                     final = forced("BLOCKED", "not_judgeable"); continue
                 m = row["min_score"]
-                if best_m is None or m >= best_m + epsilon:
-                    best_m, stale, best_rid = m, 0, result["render_id"]
-                else:
-                    stale += 1
-                    if best_rid is None:
-                        best_rid = result["render_id"]
-                if stale >= no_progress:
-                    final = forced("NOT_ACHIEVABLE_HERE", "no_progress"); continue
+                if task_best_m is None or m > task_best_m:
+                    task_best_m, task_best_rid = m, result["render_id"]
+                if result["render_id"] not in checked_ids:
+                    checked_ids.add(result["render_id"])
+                    tried.append({"n": row["n"], "claim": row["claim"], "factors": row["factors"],
+                                  "scores": row["scores"], "min_score": row["min_score"]})
+                    if best_m is None or m >= best_m + epsilon:
+                        best_m, stale = m, 0
+                    else:
+                        stale += 1
+                    if stale >= no_progress:
+                        final = forced("NOT_ACHIEVABLE_HERE", "no_progress"); continue
             if call["name"] == "conclude":
                 final = finish(result["verdict"], "model", result["render_id"], result["missing"], result["evidence"]); continue
             if call["name"] == "tag_check" and tools.n_renders >= task.budget and not row["all_landed"]:

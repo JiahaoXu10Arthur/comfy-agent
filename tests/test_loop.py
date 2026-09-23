@@ -168,6 +168,32 @@ def test_best_render_tracked_by_min_score_not_all_landed_override(make, tmp_path
     assert "0.90" in out.missing
 
 
+def _restart_call(seed, claim, base="oneObsession_v24.safetensors"):
+    return {"tool_call": {"name": "render", "arguments": {"workflow": "sdxl", "base": base, "loras": [],
+            "tags": [{"tag": "1girl"}, {"tag": "on side"}], "seed": seed, "cfg": 6.0, "steps": 30, "claim": claim}}}
+
+
+def test_forced_conclusion_after_restart_uses_task_wide_best(make, tmp_path):
+    task, prov, tools = make([0.30, 0.05, 0.05, 0.05, 0.05], [
+        render_call(1001, "start"), tc("tag_check", render_id="agent-deepseek-1-7-01"),
+        _restart_call(1001, "start"), tc("tag_check", render_id="agent-deepseek-1-7-02"),
+        _restart_call(1002, "knob:seed"), tc("tag_check", render_id="agent-deepseek-1-7-03"),
+        _restart_call(1003, "knob:seed"), tc("tag_check", render_id="agent-deepseek-1-7-04"),
+        _restart_call(1004, "knob:seed"), tc("tag_check", render_id="agent-deepseek-1-7-05")])
+    out = lp.run_task(task, tools.catalog, prov, tools, tmp_path / "run")
+    assert out.verdict == "NOT_ACHIEVABLE_HERE" and out.stop_reason == "no_progress"
+    assert out.render_id == "agent-deepseek-1-7-01"
+
+
+def test_rechecking_one_render_does_not_advance_no_progress(make, tmp_path):
+    task, prov, tools = make([0.30], [render_call(1001, "start")]
+                              + [tc("tag_check", render_id="agent-deepseek-1-7-01")] * 4
+                              + [tc("conclude", verdict="NOT_ACHIEVABLE_HERE", render_id="agent-deepseek-1-7-01", missing="no LoRA")])
+    out = lp.run_task(task, tools.catalog, prov, tools, tmp_path / "run")
+    assert out.renders == 1 and out.verdict == "NOT_ACHIEVABLE_HERE" and out.stop_reason == "model"
+    assert "used 1." in json.dumps(prov.seen[-1], ensure_ascii=False)
+
+
 def test_budget_enforced_before_render_dispatch(make, tmp_path):
     task, prov, tools = make([0.1], [render_call(1001, "start"), render_call(1002, "knob:seed")], budget=1)
     out = lp.run_task(task, tools.catalog, prov, tools, tmp_path / "run")
