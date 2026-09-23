@@ -22,7 +22,7 @@ def cells(task, catalog):
     mt = _main(task.must)
     must_norm = {normalise(t) for t in task.must}
     for wf in catalog["workflows"]:
-        lora = cat.match_lora(catalog, wf["name"], task.must)
+        lora = cat.match_lora(catalog, wf["name"], task.character_tags)
         lora_axis = [[]] + ([[{"file": lora["file"], "strength": lora["strength"]}]] if lora else [])
         for base in wf["bases"]:
             for loras in lora_axis:

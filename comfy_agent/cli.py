@@ -8,7 +8,7 @@ from . import catalog as cat, comfy as cm, eval as ev, grid as gridmod, loop, ba
 from .provider import Cassette, from_env
 from .results import Results
 from .tagger import Tagger, comfy_backend
-from .tasks import load_task, load_tasks, load_vocabulary
+from .tasks import load_categories, load_task, load_tasks, load_vocabulary
 from .tools import Tools
 
 DEFAULT_WORKFLOWS = [
@@ -24,10 +24,11 @@ DEFAULT_WORKFLOWS = [
 def _ctx(a):
     catalog = cat.load(a.catalog)
     vocab = load_vocabulary(catalog["vocabulary"])
+    categories = load_categories(catalog["vocabulary"])
     comfy = cm.Comfy(a.comfy)
     tagger = Tagger(comfy_backend(comfy, catalog["tagger"]), catalog["threshold"], vocab)
     results = Results(Path(a.out) / "results.sqlite")
-    return catalog, vocab, comfy, tagger, results
+    return catalog, vocab, categories, comfy, tagger, results
 
 
 def main(argv=None):
@@ -46,7 +47,7 @@ def main(argv=None):
     if a.cmd == "catalog":
         cat.write(cat.build(a.loras, DEFAULT_WORKFLOWS, a.tagger, a.vocabulary, a.threshold), a.catalog)
         print(f"wrote {a.catalog}"); return 0
-    catalog, vocab, comfy, tagger, results = _ctx(a)
+    catalog, vocab, categories, comfy, tagger, results = _ctx(a)
     gpu_check = lambda: cm.gpu_ok(comfy)
     try:
         def make_tools(arm, run, task):
@@ -58,12 +59,12 @@ def main(argv=None):
             return from_env(name, Cassette(getattr(a, "cassette", None), getattr(a, "cassette_mode", "off")))
 
         if a.cmd == "run":
-            task = load_task(a.task, vocab)
+            task = load_task(a.task, vocab, categories)
             if not gpu_check():
                 raise RuntimeError("GPU busy: someone else is using more than the limit")
             o = loop.run_task(task, catalog, make_provider(a.arm), make_tools(a.arm, a.run, task), Path(a.out) / a.arm / str(a.run) / f"{task.id:03d}")
             print(json.dumps(o.__dict__, ensure_ascii=False)); return 0
-        tasks = load_tasks(a.tasks, vocab)
+        tasks = load_tasks(a.tasks, vocab, categories)
         if a.cmd == "baseline":
             fn = baselines.run_seed_baseline if a.arm == "baseline-seed" else baselines.run_ladder
             for t in tasks:

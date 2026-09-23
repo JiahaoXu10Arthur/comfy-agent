@@ -124,7 +124,7 @@ def run_ladder(task, catalog, tools, run_dir):
                         return _finish(tools, task, run_dir, log, t0, "ACHIEVED", "model", row["render_id"])
                 # 匹配到 LoRA 就开
                 cur_tags, cur_loras = weighted, []
-                lora = cat.match_lora(catalog, wf["name"], task.must)
+                lora = cat.match_lora(catalog, wf["name"], task.character_tags)
                 if lora and tools.n_renders < task.budget:
                     have = {normalise(x["tag"]) for x in weighted}
                     trig = [{"tag": t, "weight": None} for t in lora["trigger"] if normalise(t) not in have]

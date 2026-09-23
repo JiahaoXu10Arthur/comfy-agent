@@ -84,7 +84,7 @@ def _eval_fixture(tmp_path, catalog_dict, vocab_path):
         d = tmp_path / arm / str(run) / f"{task.id:03d}"; d.mkdir(parents=True, exist_ok=True)
         return Tools(catalog_dict, v, comfy, tagger, results, d, arm, run, task)
 
-    tasks = [Task(1, "single", ["1girl"], 1001, 3), Task(2, "single", ["1girl"], 1001, 3)]
+    tasks = [Task(1, "single", ["1girl"], 1001, 3, []), Task(2, "single", ["1girl"], 1001, 3, [])]
     return tasks, results, make_tools
 
 

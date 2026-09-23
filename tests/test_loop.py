@@ -45,7 +45,7 @@ def make(tmp_path, catalog_dict, vocab_path):
 
     def _make(scores, responses, comfy=None, budget=12):
         v = load_vocabulary(vocab_path)
-        task = Task(7, "pose", ["1girl", "on side"], 1001, budget)
+        task = Task(7, "pose", ["1girl", "on side"], 1001, budget, [])
         comfy = comfy or FakeComfy()
         results = Results(tmp_path / "r.sqlite")
         opened.append(results)

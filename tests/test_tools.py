@@ -25,7 +25,7 @@ class FakeBackend:
 @pytest.fixture
 def tools(tmp_path, catalog_dict, vocab_path):
     v = load_vocabulary(vocab_path)
-    task = Task(7, "pose", ["1girl", "on side"], 1001, 12)
+    task = Task(7, "pose", ["1girl", "on side"], 1001, 12, [])
     comfy, backend = FakeComfy(), FakeBackend()
     t = tl.Tools(catalog_dict, v, comfy, Tagger(backend, 0.35, v), Results(tmp_path / "r.sqlite"),
                  tmp_path, "agent-deepseek", 1, task)
@@ -49,7 +49,7 @@ def test_render_then_tag_check(tools):
 
 def test_render_with_lora_builds_prompt_and_lora_syntax(tmp_path, catalog_dict, vocab_path):
     v = load_vocabulary(vocab_path)
-    task = Task(9, "character", ["1girl", "2b (nier:automata)"], 1001, 12)
+    task = Task(9, "character", ["1girl", "2b (nier:automata)"], 1001, 12, ["2b (nier:automata)"])
     comfy = FakeComfy()
     t = tl.Tools(catalog_dict, v, comfy, Tagger(FakeBackend(), 0.35, v), Results(tmp_path / "r.sqlite"),
                 tmp_path, "agent-deepseek", 1, task)

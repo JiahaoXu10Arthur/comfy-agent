@@ -49,7 +49,7 @@ def make(tmp_path, catalog_dict, vocab_path):
     def _make(rule, must=("1girl", "on side"), budget=12, arm="baseline-ladder", key="on_side", fail_on=()):
         v = load_vocabulary(vocab_path)
         comfy = FlakyComfy(fail_on) if fail_on else FakeComfy()
-        task = Task(7, "pose", list(must), 1001, budget)
+        task = Task(7, "pose", list(must), 1001, budget, [m for m in must if "(" in m])
         results = Results(tmp_path / f"{arm}.sqlite")
         opened.append(results)
         tools = Tools(catalog_dict, v, comfy, Tagger(Backend(comfy, rule, key), 0.35, v), results,
@@ -121,7 +121,7 @@ def test_ladder_lora_step_tolerates_trigger_case_mismatch(tmp_path, catalog_dict
     for l in cat2["loras"]:
         if l["file"] == "nier2b_anima":
             l["trigger"] = ["2B (NieR:Automata)"]
-    task = Task(9, "character", ["1girl", "2b (nier:automata)"], 1001, 12)
+    task = Task(9, "character", ["1girl", "2b (nier:automata)"], 1001, 12, ["2b (nier:automata)"])
     comfy = FakeComfy()
     rule = lambda g: 0.9 if "<lora:nier2b_anima" in g["lora"]["inputs"]["lora_syntax"] else 0.1
     tools = Tools(cat2, v, comfy, Tagger(Backend(comfy, rule, key="2b (nier:automata)"), 0.35, v),
