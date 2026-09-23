@@ -44,14 +44,20 @@ class Backend:
 
 @pytest.fixture
 def make(tmp_path, catalog_dict, vocab_path):
+    opened = []
+
     def _make(rule, must=("1girl", "on side"), budget=12, arm="baseline-ladder", key="on_side", fail_on=()):
         v = load_vocabulary(vocab_path)
         comfy = FlakyComfy(fail_on) if fail_on else FakeComfy()
         task = Task(7, "pose", list(must), 1001, budget)
-        tools = Tools(catalog_dict, v, comfy, Tagger(Backend(comfy, rule, key), 0.35, v), Results(tmp_path / f"{arm}.sqlite"),
+        results = Results(tmp_path / f"{arm}.sqlite")
+        opened.append(results)
+        tools = Tools(catalog_dict, v, comfy, Tagger(Backend(comfy, rule, key), 0.35, v), results,
                       tmp_path, arm, 1, task)
         return task, tools, comfy
-    return _make
+    yield _make
+    for r in opened:
+        r.close()
 
 
 def test_seed_baseline_stops_when_landed(make, tmp_path, catalog_dict):

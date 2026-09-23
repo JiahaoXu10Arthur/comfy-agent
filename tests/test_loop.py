@@ -41,14 +41,20 @@ def tc(name, **args):
 
 @pytest.fixture
 def make(tmp_path, catalog_dict, vocab_path):
+    opened = []
+
     def _make(scores, responses, comfy=None, budget=12):
         v = load_vocabulary(vocab_path)
         task = Task(7, "pose", ["1girl", "on side"], 1001, budget)
         comfy = comfy or FakeComfy()
-        tools = Tools(catalog_dict, v, comfy, Tagger(FakeBackend(scores), 0.35, v), Results(tmp_path / "r.sqlite"),
+        results = Results(tmp_path / "r.sqlite")
+        opened.append(results)
+        tools = Tools(catalog_dict, v, comfy, Tagger(FakeBackend(scores), 0.35, v), results,
                       tmp_path, "agent-deepseek", 1, task)
         return task, ScriptedProvider(responses), tools
-    return _make
+    yield _make
+    for r in opened:
+        r.close()
 
 
 def test_achieves_and_writes_summary(make, tmp_path, catalog_dict):

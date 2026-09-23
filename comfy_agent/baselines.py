@@ -51,7 +51,7 @@ def _step(tools, task, args, log, steps_file):
 def _finish(tools, task, run_dir, log, t0, verdict, reason, rid, missing=""):
     ev = ""
     if rid:
-        out = tools.conclude({"verdict": verdict, "render_id": rid, "missing": missing, "stop_reason": reason})
+        out = tools.conclude({"verdict": verdict, "render_id": rid, "missing": missing}, stop_reason=reason)
         ev = out["evidence"]
     Path(run_dir).mkdir(parents=True, exist_ok=True)
     (Path(run_dir) / "summary.md").write_text(

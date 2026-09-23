@@ -30,7 +30,8 @@ def tools(tmp_path, catalog_dict, vocab_path):
     t = tl.Tools(catalog_dict, v, comfy, Tagger(backend, 0.35, v), Results(tmp_path / "r.sqlite"),
                  tmp_path, "agent-deepseek", 1, task)
     t._comfy, t._backend = comfy, backend
-    return t
+    yield t
+    t.results.close()
 
 
 def call(seed=1001, cfg=6.0, tags=None, claim="start", loras=None, workflow="sdxl", base="ChenkinNoob-XL-V0.5.safetensors"):
@@ -92,6 +93,14 @@ def test_conclude_rules(tools):
     out = tools.conclude({"verdict": "ACHIEVED", "render_id": r2["render_id"], "missing": ""})
     assert out["evidence"].startswith("render agent-deepseek-1-7-02:") and "on side LANDED 0.90" in out["evidence"]
     assert tools.results.get(r2["render_id"])["verdict"] == "ACHIEVED"
+
+
+def test_conclude_ignores_a_model_supplied_stop_reason(tools):
+    r = tools.render(call())
+    tools.tag_check({"render_id": r["render_id"]})
+    tools.conclude({"verdict": "NOT_ACHIEVABLE_HERE", "render_id": r["render_id"], "missing": "x",
+                    "stop_reason": "budget"})
+    assert tools.results.get(r["render_id"])["stop_reason"] == "model"
 
 
 def test_history_excludes_own_task(tools):

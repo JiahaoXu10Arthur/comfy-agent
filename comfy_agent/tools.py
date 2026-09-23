@@ -121,7 +121,7 @@ class Tools:
             raise BadCall(f"render_id {render_id!r} does not belong to this task")
         return row
 
-    def conclude(self, args):
+    def conclude(self, args, stop_reason="model"):
         verdict = args.get("verdict")
         if verdict not in VERDICTS:
             raise BadCall(f"verdict must be one of {VERDICTS}")
@@ -138,7 +138,7 @@ class Tools:
         if row:
             evidence = f"render {row['render_id']}: " + ", ".join(
                 f"{t} {v} {s:.2f}" for t, (v, s) in row["scores"].items())
-            self.results.set_conclusion(row["render_id"], verdict, args.get("stop_reason", "model"), missing)
+            self.results.set_conclusion(row["render_id"], verdict, stop_reason, missing)
         return {"verdict": verdict, "render_id": rid, "evidence": evidence, "missing": missing}
 
     def dispatch(self, name, args):

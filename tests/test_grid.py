@@ -53,12 +53,14 @@ def test_run_grid_marks_achievable_and_checks_gpu(tmp_path, catalog_dict, vocab_
     assert bases == ["ChenkinNoob-XL-V0.5.safetensors", "oneObsession_v24.safetensors",
                      "miaomiaoHarem_anima16.safetensors", "anima_baseV10.safetensors"]
     assert grid.achievable(res, 7) is True and grid.achievable(res, 8) is False
+    res.close()
 
 
 def test_run_grid_stops_when_gpu_busy(tmp_path, catalog_dict, vocab_path):
     v = load_vocabulary(vocab_path)
     comfy = FakeComfy()
     tagger = Tagger(Backend(comfy, lambda g: {"1girl": 0.9}), 0.35, v)
+    res = Results(tmp_path / "r.sqlite")
     with pytest.raises(RuntimeError):
-        grid.run_grid([Task(7, "pose", ["1girl"], 1001, 12)], catalog_dict, comfy, tagger, Results(tmp_path / "r.sqlite"),
-                      tmp_path, gpu_check=lambda: False)
+        grid.run_grid([Task(7, "pose", ["1girl"], 1001, 12)], catalog_dict, comfy, tagger, res, tmp_path, gpu_check=lambda: False)
+    res.close()
