@@ -38,7 +38,8 @@ def cells(task, catalog):
     return out
 
 
-def run_grid(tasks, catalog, comfy, tagger, results, out_dir, gpu_check=cm.gpu_ok):
+def run_grid(tasks, catalog, comfy, tagger, results, out_dir, gpu_check=None):
+    gpu_check = gpu_check or (lambda: cm.gpu_ok(comfy))
     out_dir = Path(out_dir); out_dir.mkdir(parents=True, exist_ok=True)
     graphs = {w["name"]: graph.load_graph(w["graph"]) for w in catalog["workflows"]}
     achievable_map = {}

@@ -30,6 +30,9 @@ class Comfy:
             body = r.read()
             return json.loads(body) if body else {}
 
+    def system_stats(self):
+        return self._get("/system_stats")
+
     def alive(self):
         try:
             self._get("/system_stats"); return True
@@ -130,22 +133,35 @@ def _nvidia_smi():
     exe = shutil.which("nvidia-smi")
     if not exe:
         return None
-    return subprocess.run([exe, "--query-compute-apps=pid,used_memory", "--format=csv,noheader,nounits"],
+    return subprocess.run([exe, "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
                           capture_output=True, text=True, timeout=20).stdout
 
 
-def gpu_used_mb(exclude_pids=frozenset()):
+def gpu_used_mb():
+    """Total VRAM used across the GPU(s), summed from `nvidia-smi --query-gpu=memory.used`.
+    Returns None (never 0) when nvidia-smi is missing or nothing parses, so callers fail closed."""
     text = _nvidia_smi()
-    total = 0
-    for line in (text or "").splitlines():
-        parts = [p.strip() for p in line.split(",")]
-        if len(parts) != 2 or not parts[1].isdigit():
+    if not text:
+        return None
+    total, saw_line = 0, False
+    for line in text.splitlines():
+        line = line.strip()
+        if not line.isdigit():
             continue
-        if int(parts[0]) in exclude_pids:
-            continue
-        total += int(parts[1])
-    return total
+        total += int(line)
+        saw_line = True
+    return total if saw_line else None
 
 
-def gpu_ok(limit_mb=10240, comfy_pid=None):
-    return gpu_used_mb({comfy_pid} if comfy_pid else frozenset()) <= limit_mb
+def gpu_ok(comfy, limit_mb=10240):
+    """Someone else's usage: total GPU memory used minus ComfyUI's own share
+    (GET /system_stats -> devices[0].torch_vram_total, bytes -> MB). Fails closed (False)
+    whenever nvidia-smi or system_stats cannot be read."""
+    used = gpu_used_mb()
+    if used is None:
+        return False
+    try:
+        comfy_share_mb = comfy.system_stats()["devices"][0]["torch_vram_total"] / (1024 * 1024)
+    except Exception:
+        return False
+    return (used - comfy_share_mb) <= limit_mb

@@ -20,11 +20,13 @@ def _switched(rends):
                for a, b in zip(rends, rends[1:]))
 
 
-def run_eval(tasks, catalog, arms, runs, make_provider, make_tools, results, out_dir):
+def run_eval(tasks, catalog, arms, runs, make_provider, make_tools, results, out_dir, gpu_check=lambda: True):
     rows = []
     for arm in arms:
         for r in range(1, runs + 1):
             for task in tasks:
+                if not gpu_check():
+                    raise RuntimeError("GPU busy: someone else is using more than the limit")
                 task = dataclasses.replace(task, seed_hint=1000 + r)
                 tools = make_tools(arm, r, task)
                 run_dir = Path(out_dir) / arm / str(r) / f"{task.id:03d}"

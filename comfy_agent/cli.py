@@ -33,7 +33,6 @@ def _ctx(a):
 def main(argv=None):
     p = argparse.ArgumentParser(prog="comfy-agent")
     p.add_argument("--catalog", default="catalog.yaml"); p.add_argument("--comfy", default="127.0.0.1:8188"); p.add_argument("--out", default="runs")
-    p.add_argument("--comfy-pid", type=int, default=None)
     sub = p.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("catalog"); c.add_argument("action", choices=["build"]); c.add_argument("--loras", required=True)
     c.add_argument("--vocabulary", required=True); c.add_argument("--tagger", default="wd-eva02-large-tagger-v3"); c.add_argument("--threshold", type=float, default=0.35)
@@ -48,6 +47,7 @@ def main(argv=None):
         cat.write(cat.build(a.loras, DEFAULT_WORKFLOWS, a.tagger, a.vocabulary, a.threshold), a.catalog)
         print(f"wrote {a.catalog}"); return 0
     catalog, vocab, comfy, tagger, results = _ctx(a)
+    gpu_check = lambda: cm.gpu_ok(comfy)
     try:
         def make_tools(arm, run, task):
             d = Path(a.out) / arm / str(run) / f"{task.id:03d}"; d.mkdir(parents=True, exist_ok=True)
@@ -59,23 +59,26 @@ def main(argv=None):
 
         if a.cmd == "run":
             task = load_task(a.task, vocab)
+            if not gpu_check():
+                raise RuntimeError("GPU busy: someone else is using more than the limit")
             o = loop.run_task(task, catalog, make_provider(a.arm), make_tools(a.arm, a.run, task), Path(a.out) / a.arm / str(a.run) / f"{task.id:03d}")
             print(json.dumps(o.__dict__, ensure_ascii=False)); return 0
         tasks = load_tasks(a.tasks, vocab)
         if a.cmd == "baseline":
             fn = baselines.run_seed_baseline if a.arm == "baseline-seed" else baselines.run_ladder
             for t in tasks:
+                if not gpu_check():
+                    raise RuntimeError("GPU busy: someone else is using more than the limit")
                 o = fn(t, catalog, make_tools(a.arm, a.run, t), Path(a.out) / a.arm / str(a.run) / f"{t.id:03d}")
                 print(t.id, o.verdict, o.renders)
             return 0
         if a.cmd == "grid":
-            truth = gridmod.run_grid(tasks, catalog, comfy, tagger, results, Path(a.out) / "grid",
-                                     gpu_check=lambda: cm.gpu_ok(comfy_pid=a.comfy_pid))
+            truth = gridmod.run_grid(tasks, catalog, comfy, tagger, results, Path(a.out) / "grid", gpu_check=gpu_check)
             (Path(a.out) / "truth.json").write_text(json.dumps(truth), encoding="utf-8"); print(truth); return 0
         if a.cmd == "eval":
             t0 = time.time()
             truth = {int(k): v for k, v in json.loads((Path(a.out) / "truth.json").read_text()).items()}
-            rows = ev.run_eval(tasks, catalog, a.arms.split(","), a.runs, make_provider, make_tools, results, a.out)
+            rows = ev.run_eval(tasks, catalog, a.arms.split(","), a.runs, make_provider, make_tools, results, a.out, gpu_check=gpu_check)
             m = ev.metrics(rows, truth, [t.id for t in tasks])
             n_grid = sum(len(results.renders("grid", 0, t.id)) for t in tasks)
             totals = {"renders": sum(r["renders"] for r in rows) + n_grid, "minutes": round((time.time() - t0) / 60, 1),

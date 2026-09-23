@@ -62,23 +62,66 @@ def test_run_returns_first_image(server):
     assert name == "out_00001_.png" and data.startswith(b"\x89PNG")
 
 
+def test_system_stats_hits_the_endpoint(server):
+    c = cm.Comfy(server, timeout=5)
+    assert c.system_stats() == {}
+
+
 def test_run_raises_on_execution_error(server):
     Fake.state["fail"] = True
     with pytest.raises(cm.ComfyError, match="boom"):
         cm.Comfy(server, timeout=5).run({})
 
 
-def test_gpu_used_parses_nvidia_smi(monkeypatch):
-    monkeypatch.setattr(cm, "_nvidia_smi", lambda: "123, 8000\n456, 3000\n")
+class FakeStatsComfy:
+    def __init__(self, torch_vram_total_bytes):
+        self.torch_vram_total_bytes = torch_vram_total_bytes
+
+    def system_stats(self):
+        return {"devices": [{"torch_vram_total": self.torch_vram_total_bytes}]}
+
+
+def test_gpu_used_mb_sums_nvidia_smi_lines(monkeypatch):
+    monkeypatch.setattr(cm, "_nvidia_smi", lambda: "8000\n3000\n")
     assert cm.gpu_used_mb() == 11000
-    assert cm.gpu_used_mb(exclude_pids={456}) == 8000
-    assert cm.gpu_ok(limit_mb=10240, comfy_pid=456) is True
-    assert cm.gpu_ok(limit_mb=10240) is False
 
 
-def test_gpu_used_zero_without_nvidia_smi(monkeypatch):
+def test_gpu_used_mb_none_without_nvidia_smi(monkeypatch):
     monkeypatch.setattr(cm, "_nvidia_smi", lambda: None)
-    assert cm.gpu_used_mb() == 0
+    assert cm.gpu_used_mb() is None
+
+
+def test_gpu_used_mb_none_on_unparseable_output(monkeypatch):
+    monkeypatch.setattr(cm, "_nvidia_smi", lambda: "[N/A]\n[N/A]\n")
+    assert cm.gpu_used_mb() is None
+
+
+def test_gpu_ok_passes_under_limit(monkeypatch):
+    monkeypatch.setattr(cm, "_nvidia_smi", lambda: "9000\n")
+    assert cm.gpu_ok(FakeStatsComfy(1024 * 1024 * 1024), limit_mb=10240) is True
+
+
+def test_gpu_ok_fails_over_limit(monkeypatch):
+    monkeypatch.setattr(cm, "_nvidia_smi", lambda: "20000\n")
+    assert cm.gpu_ok(FakeStatsComfy(1024 * 1024 * 1024), limit_mb=10240) is False
+
+
+def test_gpu_ok_fails_closed_without_nvidia_smi(monkeypatch):
+    monkeypatch.setattr(cm, "_nvidia_smi", lambda: None)
+    assert cm.gpu_ok(FakeStatsComfy(0)) is False
+
+
+def test_gpu_ok_fails_closed_on_garbage_nvidia_smi_output(monkeypatch):
+    monkeypatch.setattr(cm, "_nvidia_smi", lambda: "not,a,number\n")
+    assert cm.gpu_ok(FakeStatsComfy(0)) is False
+
+
+def test_gpu_ok_fails_closed_when_system_stats_unreadable(monkeypatch):
+    monkeypatch.setattr(cm, "_nvidia_smi", lambda: "9000\n")
+    class Broken:
+        def system_stats(self):
+            raise cm.ComfyError("unreachable")
+    assert cm.gpu_ok(Broken()) is False
 
 
 def test_run_raises_comfy_error_on_transport_failure():
