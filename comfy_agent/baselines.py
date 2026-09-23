@@ -26,10 +26,10 @@ def main_tag(scores, must):
 
 
 def _step(tools, task, args, log, steps_file):
-    """render + tag_check; returns (row, all_landed). Retries the same render args once on
-    ComfyError; a second consecutive ComfyError raises _Blocked, which the runner catches and
-    turns into a BLOCKED Outcome (stop_reason tool_error). Writes one steps.jsonl line per
-    completed render+tag_check."""
+    """render + tag_check; returns (row, all_landed). Retries a ComfyError once for render and
+    again for tag_check; a second consecutive ComfyError on either raises _Blocked, which the
+    runner catches and turns into a BLOCKED Outcome (stop_reason tool_error). Writes one
+    steps.jsonl line per completed render+tag_check."""
     t0 = time.time()
     try:
         r = tools.render(args)
@@ -40,7 +40,13 @@ def _step(tools, task, args, log, steps_file):
             raise _Blocked()
     except ToolError as e:
         raise RuntimeError(f"baseline produced a render the gate rejected: {e}") from e
-    t = tools.tag_check({"render_id": r["render_id"]})
+    try:
+        t = tools.tag_check({"render_id": r["render_id"]})
+    except ComfyError:
+        try:
+            t = tools.tag_check({"render_id": r["render_id"]})
+        except ComfyError:
+            raise _Blocked()
     log.append(f"{r['n']:02d} | {args['claim']} | min {t['min_score']}")
     row = tools.results.get(r["render_id"])
     steps_file.write(json.dumps({"n": r["n"], "claim": args["claim"], "args": args, "graph": tools.last_graph,

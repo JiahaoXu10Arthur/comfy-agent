@@ -42,17 +42,32 @@ class Backend:
         return {"1girl": 0.99, self.key: self.rule(g)}
 
 
+class FlakyBackend(Backend):
+    """Like Backend, but raises ComfyError from `tag` on the 1-indexed call numbers in `fail_on`."""
+    def __init__(self, comfy, rule, key="on_side", fail_on=()):
+        super().__init__(comfy, rule, key)
+        self.calls = 0
+        self.fail_on = set(fail_on)
+
+    def tag(self, path):
+        self.calls += 1
+        if self.calls in self.fail_on:
+            raise ComfyError("tag boom")
+        return super().tag(path)
+
+
 @pytest.fixture
 def make(tmp_path, catalog_dict, vocab_path):
     opened = []
 
-    def _make(rule, must=("1girl", "on side"), budget=12, arm="baseline-ladder", key="on_side", fail_on=()):
+    def _make(rule, must=("1girl", "on side"), budget=12, arm="baseline-ladder", key="on_side", fail_on=(), tag_fail_on=()):
         v = load_vocabulary(vocab_path)
         comfy = FlakyComfy(fail_on) if fail_on else FakeComfy()
         task = Task(7, "pose", list(must), 1001, budget, [m for m in must if "(" in m])
         results = Results(tmp_path / f"{arm}.sqlite")
         opened.append(results)
-        tools = Tools(catalog_dict, v, comfy, Tagger(Backend(comfy, rule, key), 0.35, v), results,
+        backend = FlakyBackend(comfy, rule, key, tag_fail_on) if tag_fail_on else Backend(comfy, rule, key)
+        tools = Tools(catalog_dict, v, comfy, Tagger(backend, 0.35, v), results,
                       tmp_path, arm, 1, task)
         return task, tools, comfy
     yield _make
@@ -146,6 +161,21 @@ def test_seed_baseline_blocked_after_two_comfy_errors(make, tmp_path, catalog_di
     assert out.verdict == "BLOCKED" and out.stop_reason == "tool_error" and out.render_id is None
     assert out.renders == 0
     assert (run_dir / "summary.md").exists()
+
+
+def test_seed_baseline_retries_tag_check_once_on_comfy_error(make, tmp_path, catalog_dict):
+    task, tools, comfy = make(lambda g: 0.9 if g["ks"]["inputs"]["seed"] == 1003 else 0.1,
+                               arm="baseline-seed-tagretry", tag_fail_on=(1,))
+    out = bl.run_seed_baseline(task, catalog_dict, tools, tmp_path / "s")
+    assert out.verdict == "ACHIEVED" and out.renders == 3
+    assert [g["ks"]["inputs"]["seed"] for g in comfy.graphs] == [1001, 1002, 1003]
+
+
+def test_seed_baseline_blocked_after_two_tag_check_comfy_errors(make, tmp_path, catalog_dict):
+    task, tools, comfy = make(lambda g: 0.9, arm="baseline-seed-tagblocked", tag_fail_on=(1, 2))
+    out = bl.run_seed_baseline(task, catalog_dict, tools, tmp_path / "s")
+    assert out.verdict == "BLOCKED" and out.stop_reason == "tool_error"
+    assert out.renders == 1
 
 
 def test_ladder_retries_once_on_comfy_error(make, tmp_path, catalog_dict):
