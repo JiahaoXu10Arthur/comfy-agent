@@ -40,17 +40,20 @@ def cells(task, catalog):
 
 def run_grid(tasks, catalog, comfy, tagger, results, out_dir, gpu_check=None):
     """Cells for every task, sorted globally by (workflow order, base order) so the base
-    switches only 3 times across the whole grid (spec §8), not once per task (I8)."""
+    switches only 3 times across the whole grid (spec §8), not once per task (I8).
+    Resumable (C5, spec §10 v3.1): a task that already has grid rows (arm grid, run 0) is
+    skipped entirely; a task with none runs in full."""
     gpu_check = gpu_check or (lambda: cm.gpu_ok(comfy))
     out_dir = Path(out_dir); out_dir.mkdir(parents=True, exist_ok=True)
     graphs = {w["name"]: graph.load_graph(w["graph"]) for w in catalog["workflows"]}
     wf_order = {w["name"]: i for i, w in enumerate(catalog["workflows"])}
     base_order = {w["name"]: {b: i for i, b in enumerate(w["bases"])} for w in catalog["workflows"]}
 
-    all_cells = [(task, c) for task in tasks for c in cells(task, catalog)]
+    pending = [task for task in tasks if not results.renders("grid", 0, task.id)]
+    all_cells = [(task, c) for task in pending for c in cells(task, catalog)]
     all_cells.sort(key=lambda tc: (wf_order[tc[1]["workflow"]], base_order[tc[1]["workflow"]][tc[1]["base"]]))
 
-    n_by_task = {task.id: 0 for task in tasks}
+    n_by_task = {task.id: 0 for task in pending}
     for (wfname, base), group in groupby(all_cells, key=lambda tc: (tc[1]["workflow"], tc[1]["base"])):
         if not gpu_check():
             raise RuntimeError("GPU busy: someone else is using more than the limit")

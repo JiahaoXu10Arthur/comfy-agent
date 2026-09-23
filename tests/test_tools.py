@@ -120,6 +120,23 @@ def test_render_missing_arguments_is_tool_error(tools):
         tools.render({"workflow": "sdxl"})
 
 
+def test_rerun_same_scope_overwrites_instead_of_crashing(tmp_path, catalog_dict, vocab_path):
+    v = load_vocabulary(vocab_path)
+    task = Task(7, "pose", ["1girl", "on side"], 1001, 12, [])
+    results = Results(tmp_path / "r.sqlite")
+    comfy, backend = FakeComfy(), FakeBackend()
+    t1 = tl.Tools(catalog_dict, v, comfy, Tagger(backend, 0.35, v), results, tmp_path, "agent-deepseek", 1, task)
+    t1.render(call())
+    t1.render(call(seed=1002, claim="knob:seed"))
+    assert len(results.renders("agent-deepseek", 1, 7)) == 2
+
+    t2 = tl.Tools(catalog_dict, v, comfy, Tagger(backend, 0.35, v), results, tmp_path, "agent-deepseek", 1, task)
+    r = t2.render(call())
+    rows = results.renders("agent-deepseek", 1, 7)
+    assert [x["render_id"] for x in rows] == [r["render_id"]]
+    results.close()
+
+
 def test_render_unknown_lora_is_tool_error(tools):
     with pytest.raises(tl.ToolError, match="nope"):
         tools.render(call(loras=[{"file": "nope", "strength": 1.0}]))

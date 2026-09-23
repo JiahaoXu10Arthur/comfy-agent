@@ -37,6 +37,19 @@ def test_conclusion(tmp_path):
     r.close()
 
 
+def test_delete_scope_removes_only_that_arm_run_task(tmp_path):
+    r = Results(tmp_path / "r.sqlite")
+    r.add_render("a-1-7-01", "agent-deepseek", 1, 7, 1, [], "start", "", 1)
+    r.add_render("a-1-7-02", "agent-deepseek", 1, 7, 2, [], "start", "", 1)
+    r.add_render("a-1-9-01", "agent-deepseek", 1, 9, 1, [], "start", "", 1)
+    r.add_render("a-2-7-01", "agent-deepseek", 2, 7, 1, [], "start", "", 1)
+    r.delete_scope("agent-deepseek", 1, 7)
+    assert r.renders("agent-deepseek", 1, 7) == []
+    assert [x["render_id"] for x in r.renders("agent-deepseek", 1, 9)] == ["a-1-9-01"]
+    assert [x["render_id"] for x in r.renders("agent-deepseek", 2, 7)] == ["a-2-7-01"]
+    r.close()
+
+
 def test_close_closes_the_connection(tmp_path):
     r = Results(tmp_path / "r.sqlite")
     r.add_render("x", "agent-deepseek", 1, 1, 1, [], "start", "", 1)

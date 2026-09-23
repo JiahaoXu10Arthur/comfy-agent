@@ -53,6 +53,7 @@ class Tools:
         self.out_dir, self.arm, self.run, self.task = Path(out_dir), arm, run, task
         self.last_arm, self.n_renders, self.last_graph = None, 0, None
         self._graphs = {w["name"]: graph.load_graph(w["graph"]) for w in catalog["workflows"]}
+        self.results.delete_scope(arm, run, task.id)
 
     def _render_id(self, n):
         return f"{self.arm}-{self.run}-{self.task.id}-{n:02d}"

@@ -56,6 +56,21 @@ def test_run_grid_marks_achievable_and_checks_gpu(tmp_path, catalog_dict, vocab_
     res.close()
 
 
+def test_run_grid_resumes_without_rerendering_finished_tasks(tmp_path, catalog_dict, vocab_path):
+    v = load_vocabulary(vocab_path)
+    comfy = FakeComfy()
+    rule = lambda g: {"1girl": 0.99, "on_side": 0.9 if "oneObsession" in str(g.get("ckpt", {})) else 0.1}
+    tagger = Tagger(Backend(comfy, rule), 0.35, v)
+    res = Results(tmp_path / "r.sqlite")
+    tasks = [Task(7, "pose", ["1girl", "on side"], 1001, 12, []), Task(8, "pose", ["1girl", "stretching"], 1001, 12, [])]
+    out1 = grid.run_grid(tasks, catalog_dict, comfy, tagger, res, tmp_path, gpu_check=lambda: True)
+    n_after_first = len(comfy.graphs)
+    out2 = grid.run_grid(tasks, catalog_dict, comfy, tagger, res, tmp_path, gpu_check=lambda: True)
+    assert out2 == out1
+    assert len(comfy.graphs) == n_after_first
+    res.close()
+
+
 def test_run_grid_stops_when_gpu_busy(tmp_path, catalog_dict, vocab_path):
     v = load_vocabulary(vocab_path)
     comfy = FakeComfy()

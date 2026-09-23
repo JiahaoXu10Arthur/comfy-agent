@@ -104,6 +104,18 @@ def test_run_eval_raises_when_gpu_busy(tmp_path, catalog_dict, vocab_path):
     results.close()
 
 
+def test_run_eval_resumes_without_rerunning_finished_triples(tmp_path, catalog_dict, vocab_path):
+    tasks, results, make_tools = _eval_fixture(tmp_path, catalog_dict, vocab_path)
+    rows1 = ev.run_eval(tasks, catalog_dict, ["baseline-seed"], 1, None, make_tools, results, tmp_path)
+    assert len(rows1) == 2
+    total_renders = sum(len(results.renders("baseline-seed", 1, t.id)) for t in tasks)
+    rows2 = ev.run_eval(tasks, catalog_dict, ["baseline-seed"], 1, None, make_tools, results, tmp_path)
+    assert rows2 == rows1
+    assert sum(len(results.renders("baseline-seed", 1, t.id)) for t in tasks) == total_renders
+    assert len((tmp_path / "rows.jsonl").read_text(encoding="utf-8").splitlines()) == 2
+    results.close()
+
+
 def test_write_report(tmp_path):
     m = {"agent-deepseek": dict(correct_rate=0.9, avg_renders=4.0, switched=3, used_history=2, seed_only=1, error_rate=0.1, pass3=8, blocked=0, n=10),
          "baseline-ladder": dict(correct_rate=0.8, avg_renders=6.0, switched=5, used_history=0, seed_only=4, error_rate=0.2, pass3=7, blocked=0, n=10)}

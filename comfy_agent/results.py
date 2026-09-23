@@ -34,6 +34,10 @@ class Results:
                         (verdict, stop_reason, missing, render_id))
         self.db.commit()
 
+    def delete_scope(self, arm, run, task_id):
+        self.db.execute("DELETE FROM render WHERE arm=? AND run=? AND task_id=?", (arm, run, task_id))
+        self.db.commit()
+
     def _row(self, r):
         cols = ["render_id", "arm", "run", "task_id", "n", "factors", "claim", "png", "seconds",
                 "scores", "verdict", "stop_reason", "missing"]

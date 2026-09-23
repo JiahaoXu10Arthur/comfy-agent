@@ -1,5 +1,6 @@
 """Three runs per arm, the metrics table, and the one sentence §1 asks for."""
 import dataclasses
+import json
 import time
 from pathlib import Path
 
@@ -21,30 +22,45 @@ def _switched(rends):
 
 
 def run_eval(tasks, catalog, arms, runs, make_provider, make_tools, results, out_dir, gpu_check=lambda: True):
-    rows = []
-    for arm in arms:
-        for r in range(1, runs + 1):
-            for task in tasks:
-                if not gpu_check():
-                    raise RuntimeError("GPU busy: someone else is using more than the limit")
-                task = dataclasses.replace(task, seed_hint=1000 + r)
-                tools = make_tools(arm, r, task)
-                run_dir = Path(out_dir) / arm / str(r) / f"{task.id:03d}"
-                if arm == "baseline-seed":
-                    o = baselines.run_seed_baseline(task, catalog, tools, run_dir)
-                elif arm == "baseline-ladder":
-                    o = baselines.run_ladder(task, catalog, tools, run_dir)
-                else:
-                    o = loop.run_task(task, catalog, make_provider(arm), tools, run_dir)
-                rends = results.renders(arm, r, task.id)
-                claims = [x["claim"] for x in rends]
-                switched = _switched(rends)
-                used_history = any('"tool": "history"' in line for line in
-                                   (run_dir / "steps.jsonl").read_text(encoding="utf-8").splitlines()) if (run_dir / "steps.jsonl").exists() else False
-                rows.append({"arm": arm, "run": r, "task_id": task.id, "verdict": o.verdict, "stop_reason": o.stop_reason,
-                             "renders": o.renders, "last_claim": claims[-1] if claims else "", "switched": switched,
-                             "used_history": used_history, "prompt_tokens": o.prompt_tokens, "completion_tokens": o.completion_tokens,
-                             "seconds": o.seconds})
+    """Resumable (C5, spec §10 v3.1): rows already in `<out_dir>/rows.jsonl` are returned
+    as-is and their (arm, run, task) triple is not re-run; every newly finished triple is
+    appended to rows.jsonl immediately, so a crash keeps everything finished so far."""
+    out_dir = Path(out_dir); out_dir.mkdir(parents=True, exist_ok=True)
+    rows_path = out_dir / "rows.jsonl"
+    rows, done = [], set()
+    if rows_path.exists():
+        for line in rows_path.read_text(encoding="utf-8").splitlines():
+            row = json.loads(line)
+            rows.append(row)
+            done.add((row["arm"], row["run"], row["task_id"]))
+    with open(rows_path, "a", encoding="utf-8") as rows_file:
+        for arm in arms:
+            for r in range(1, runs + 1):
+                for task in tasks:
+                    if (arm, r, task.id) in done:
+                        continue
+                    if not gpu_check():
+                        raise RuntimeError("GPU busy: someone else is using more than the limit")
+                    task = dataclasses.replace(task, seed_hint=1000 + r)
+                    tools = make_tools(arm, r, task)
+                    run_dir = out_dir / arm / str(r) / f"{task.id:03d}"
+                    if arm == "baseline-seed":
+                        o = baselines.run_seed_baseline(task, catalog, tools, run_dir)
+                    elif arm == "baseline-ladder":
+                        o = baselines.run_ladder(task, catalog, tools, run_dir)
+                    else:
+                        o = loop.run_task(task, catalog, make_provider(arm), tools, run_dir)
+                    rends = results.renders(arm, r, task.id)
+                    claims = [x["claim"] for x in rends]
+                    switched = _switched(rends)
+                    used_history = any('"tool": "history"' in ln for ln in
+                                       (run_dir / "steps.jsonl").read_text(encoding="utf-8").splitlines()) if (run_dir / "steps.jsonl").exists() else False
+                    row = {"arm": arm, "run": r, "task_id": task.id, "verdict": o.verdict, "stop_reason": o.stop_reason,
+                           "renders": o.renders, "last_claim": claims[-1] if claims else "", "switched": switched,
+                           "used_history": used_history, "prompt_tokens": o.prompt_tokens, "completion_tokens": o.completion_tokens,
+                           "seconds": o.seconds}
+                    rows.append(row)
+                    rows_file.write(json.dumps(row, ensure_ascii=False) + "\n")
     return rows
 
 
