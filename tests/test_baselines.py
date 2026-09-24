@@ -87,7 +87,7 @@ def test_seed_baseline_writes_steps_jsonl(make, tmp_path, catalog_dict):
     task, tools, comfy = make(lambda g: 0.9 if g["ks"]["inputs"]["seed"] == 1003 else 0.1, arm="baseline-seed")
     run_dir = tmp_path / "s"
     bl.run_seed_baseline(task, catalog_dict, tools, run_dir)
-    lines = [json.loads(l) for l in (run_dir / "steps.jsonl").read_text().splitlines()]
+    lines = [json.loads(l) for l in (run_dir / "steps.jsonl").read_text(encoding="utf-8").splitlines()]
     assert len(lines) == 3
     for line in lines:
         assert set(line) == {"n", "claim", "args", "graph", "scores", "seconds"}

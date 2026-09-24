@@ -32,7 +32,7 @@ def test_build_reads_fields_and_orders_by_filename(tmp_path):
 
 def test_build_skips_nsfw_missing_civitai_and_unknown_base(tmp_path):
     meta(tmp_path, "nsfw", civitai={"trainedWords": "x", "model": {"nsfw": True}})
-    meta(tmp_path, "nociv"); (tmp_path / "nociv.metadata.json").write_text(json.dumps({"base_model": "Illustrious"}))
+    meta(tmp_path, "nociv"); (tmp_path / "nociv.metadata.json").write_text(json.dumps({"base_model": "Illustrious"}), encoding="utf-8")
     meta(tmp_path, "pony", base_model="Pony")
     meta(tmp_path, "ok")
     with warnings.catch_warnings(record=True) as w:

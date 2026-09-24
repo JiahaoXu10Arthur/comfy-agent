@@ -78,7 +78,7 @@ def main(argv=None):
             (Path(a.out) / "truth.json").write_text(json.dumps(truth), encoding="utf-8"); print(truth); return 0
         if a.cmd == "eval":
             t0 = time.time()
-            truth = {int(k): v for k, v in json.loads((Path(a.out) / "truth.json").read_text()).items()}
+            truth = {int(k): v for k, v in json.loads((Path(a.out) / "truth.json").read_text(encoding="utf-8")).items()}
             rows = ev.run_eval(tasks, catalog, a.arms.split(","), a.runs, make_provider, make_tools, results, a.out, gpu_check=gpu_check)
             m = ev.metrics(rows, truth, [t.id for t in tasks])
             n_grid = sum(len(results.renders("grid", 0, t.id)) for t in tasks)

@@ -64,9 +64,9 @@ def test_achieves_and_writes_summary(make, tmp_path, catalog_dict):
         tc("conclude", verdict="ACHIEVED", render_id="agent-deepseek-1-7-02", missing="")])
     out = lp.run_task(task, catalog_dict, prov, tools, tmp_path / "run")
     assert out.verdict == "ACHIEVED" and out.renders == 2 and out.turns == 5 and out.stop_reason == "model"
-    lines = (tmp_path / "run/steps.jsonl").read_text().splitlines()
+    lines = (tmp_path / "run/steps.jsonl").read_text(encoding="utf-8").splitlines()
     assert len(lines) == 5 and json.loads(lines[0])["tool"] == "render"
-    summ = (tmp_path / "run/summary.md").read_text()
+    summ = (tmp_path / "run/summary.md").read_text(encoding="utf-8")
     assert "ACHIEVED" in summ and "weight:on side" in summ
     # 第二轮的输入里有已试过的表
     assert "on side" in json.dumps(prov.seen[2], ensure_ascii=False)
@@ -77,7 +77,7 @@ def test_steps_jsonl_carries_the_full_record(make, tmp_path):
         render_call(1001, "start"), tc("tag_check", render_id="agent-deepseek-1-7-01"),
         tc("conclude", verdict="ACHIEVED", render_id="agent-deepseek-1-7-01", missing="")])
     lp.run_task(task, tools.catalog, prov, tools, tmp_path / "run")
-    lines = [json.loads(l) for l in (tmp_path / "run/steps.jsonl").read_text().splitlines()]
+    lines = [json.loads(l) for l in (tmp_path / "run/steps.jsonl").read_text(encoding="utf-8").splitlines()]
     common_keys = {"turn", "tool", "args", "result", "error", "model_text", "usage", "seconds"}
     for line in lines:
         assert common_keys <= set(line)
@@ -148,7 +148,7 @@ def test_tag_check_comfy_error_message_names_tag_check_not_render(tmp_path, cata
         tc("tag_check", render_id="agent-deepseek-1-7-01")])
     out = lp.run_task(task, tools.catalog, prov, tools, tmp_path / "run")
     assert out.verdict == "BLOCKED" and out.stop_reason == "tool_error"
-    lines = [json.loads(l) for l in (tmp_path / "run/steps.jsonl").read_text().splitlines()]
+    lines = [json.loads(l) for l in (tmp_path / "run/steps.jsonl").read_text(encoding="utf-8").splitlines()]
     assert lines[-1]["error"].startswith("tag_check failed:")
     results.close()
 
