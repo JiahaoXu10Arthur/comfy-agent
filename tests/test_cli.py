@@ -1,3 +1,4 @@
+import argparse
 import subprocess, sys
 
 import yaml
@@ -69,3 +70,29 @@ def test_cli_end_to_end(tmp_path, monkeypatch, catalog_dict, vocab_path):
     assert cli.main(["--out", str(out_dir), "eval", "--tasks", str(tasks_dir),
                      "--arms", "baseline-seed,baseline-ladder", "--runs", "1"]) == 0
     assert len(comfy.graphs) == n_after_first_eval
+
+
+def test_ctx_creates_out_dir_before_opening_results_db(tmp_path, monkeypatch, catalog_dict, vocab_path):
+    """Regression: on a fresh host, --out pointed at a directory that doesn't exist yet
+    (e.g. D:\\comfy-agent\\runs\\smoke) and _ctx opened results.sqlite there before creating
+    it, raising sqlite3.OperationalError: unable to open database file. _ctx must mkdir
+    the --out directory first."""
+    out_dir = tmp_path / "does" / "not" / "exist" / "yet"
+    assert not out_dir.exists()
+
+    vocab = load_vocabulary(vocab_path)
+    categories = load_categories(vocab_path)
+
+    monkeypatch.setattr(cli.cat, "load", lambda path: catalog_dict)
+    monkeypatch.setattr(cli, "load_vocabulary", lambda path: vocab)
+    monkeypatch.setattr(cli, "load_categories", lambda path: categories)
+    monkeypatch.setattr(cli.cm, "Comfy", lambda addr: object())
+    monkeypatch.setattr(cli, "comfy_backend", lambda comfy, model: object())
+    monkeypatch.setattr(cli, "Tagger", lambda backend, threshold, vocab: object())
+
+    a = argparse.Namespace(catalog="catalog.yaml", comfy="127.0.0.1:8188", out=str(out_dir))
+    catalog, vocab_out, categories_out, comfy, tagger, results = cli._ctx(a)
+
+    assert out_dir.exists()
+    assert (out_dir / "results.sqlite").exists()
+    results.close()
