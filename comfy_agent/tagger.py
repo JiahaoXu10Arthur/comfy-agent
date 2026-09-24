@@ -1,14 +1,16 @@
 """tagassert with the backend and threshold pinned by the catalog.
 
-Replaces tagassert 0.1.0's shipped ComfyTagger backend: that implementation never stages
-the PNG where ComfyUI can load it (C1) and scans the whole /history oldest-first instead
-of scoping to its own prompt_id, so every tag_check after the first returns stale scores
-(C2). This backend uploads the PNG through ComfyUI's own /upload/image, submits the same
-three-node graph tagassert.backends.ComfyTagger.tag builds, and polls /history/{prompt_id}
+Replaces tagassert 0.1.0's shipped ComfyTagger backend, which never stages the PNG where
+ComfyUI can load it (C1), scans the whole /history oldest-first instead of scoping to its
+own prompt_id (C2), and can only read WD14Tagger|pysssss's comma-joined tag string, which
+returns every tag at score 1.0 with the model's real confidence gone. This backend uploads
+the PNG through ComfyUI's own /upload/image, submits a graph through the WD14Scores|comfy_agent
+custom node (tools/wd14_scores) for real per-tag probabilities, and polls /history/{prompt_id}
 the way comfy.Comfy.run does.
 """
+import json
+
 from tagassert import compare, normalise, NOT_JUDGEABLE
-from tagassert.backends import BackendError, ComfyTagger
 
 from .comfy import ComfyError
 
@@ -21,20 +23,19 @@ class ComfyBackend:
         name = self.comfy.upload_image(image_path)
         graph = {
             "1": {"class_type": "LoadImage", "inputs": {"image": name}},
-            "2": {"class_type": "WD14Tagger|pysssss",
+            "2": {"class_type": "WD14Scores|comfy_agent",
                   "inputs": {"image": ["1", 0], "model": self.model,
-                             "threshold": 0.01, "character_threshold": 0.01,
-                             "replace_underscore": True, "trailing_comma": False,
-                             "exclude_tags": ""}},
+                             "min_prob": 0.01, "replace_underscore": True}},
             "3": {"class_type": "PreviewAny", "inputs": {"source": ["2", 0]}},
         }
         outputs = self.comfy.run_for_outputs(graph)
-        try:
-            parsed = ComfyTagger._parse(outputs)
-        except BackendError as e:
-            raise ComfyError(str(e)) from e
-        return {tag.replace("\\(", "(").replace("\\)", ")"): score
-                for tag, score in parsed.items()}
+        for node_id in ("2", "3"):
+            for text in (outputs.get(node_id) or {}).get("text", []):
+                try:
+                    return json.loads(text)
+                except (TypeError, ValueError):
+                    continue
+        raise ComfyError(f"no parseable tagger JSON in outputs: {outputs}")
 
 
 def comfy_backend(comfy, model):

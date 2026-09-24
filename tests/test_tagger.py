@@ -81,11 +81,11 @@ class FakeComfyServer(BaseHTTPRequestHandler):
             image = payload["prompt"]["1"]["inputs"]["image"]
             pid = uuid.uuid4().hex
             if FakeComfyServer.state.get("unparseable"):
-                outputs = {"2": {}}
+                outputs = {"2": {"text": ["not json"]}}
             elif FakeComfyServer.state.get("outputs_override") is not None:
                 outputs = FakeComfyServer.state["outputs_override"]
             else:
-                outputs = {"2": {"text": [f"tag_for_{image}"]}}
+                outputs = {"2": {"text": [json.dumps({f"tag_for_{image}": 0.5})]}}
             FakeComfyServer.state["history"][pid] = {
                 "status": {"status_str": "success", "messages": []},
                 "outputs": outputs,
@@ -129,13 +129,28 @@ def test_backend_wraps_an_unparseable_tagger_response_as_comfy_error(comfy_serve
         backend.tag(p)
 
 
-def test_judge_lands_a_must_tag_the_tagger_node_returned_with_escaped_parens(comfy_server, tmp_path, vocab_path):
+def test_judge_lands_a_must_tag_from_the_node_s_unescaped_json_key(comfy_server, tmp_path, vocab_path):
     v = load_vocabulary(vocab_path)
     comfy = cm.Comfy(comfy_server, timeout=5)
     backend = ComfyBackend(comfy, "wd-eva02-large-tagger-v3")
     t = Tagger(backend, 0.35, v)
     p = tmp_path / "x.png"
     p.write_bytes(b"\x89PNGfake")
-    FakeComfyServer.state["outputs_override"] = {"2": {"tags": {"2b \\(nier:automata\\)": 0.95}}}
+    FakeComfyServer.state["outputs_override"] = {
+        "2": {"text": [json.dumps({"2b (nier:automata)": 0.95})]}}
     out = t.judge(p, ["2b (nier:automata)"])
     assert out["2b (nier:automata)"] == ("LANDED", 0.95)
+
+
+def test_judge_reports_real_fractional_scores_not_flattened_to_one(comfy_server, tmp_path, vocab_path):
+    v = load_vocabulary(vocab_path)
+    comfy = cm.Comfy(comfy_server, timeout=5)
+    backend = ComfyBackend(comfy, "wd-eva02-large-tagger-v3")
+    t = Tagger(backend, 0.35, v)
+    p = tmp_path / "x.png"
+    p.write_bytes(b"\x89PNGfake")
+    FakeComfyServer.state["outputs_override"] = {
+        "2": {"text": [json.dumps({"on_side": 0.12, "1girl": 0.97})]}}
+    out = t.judge(p, ["on side", "1girl"])
+    assert out["on side"] == ("MISSING", 0.12)
+    assert out["1girl"] == ("LANDED", 0.97)
