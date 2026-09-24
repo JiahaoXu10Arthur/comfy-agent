@@ -80,7 +80,12 @@ class FakeComfyServer(BaseHTTPRequestHandler):
             payload = json.loads(body)
             image = payload["prompt"]["1"]["inputs"]["image"]
             pid = uuid.uuid4().hex
-            outputs = {"2": {}} if FakeComfyServer.state.get("unparseable") else {"2": {"text": [f"tag_for_{image}"]}}
+            if FakeComfyServer.state.get("unparseable"):
+                outputs = {"2": {}}
+            elif FakeComfyServer.state.get("outputs_override") is not None:
+                outputs = FakeComfyServer.state["outputs_override"]
+            else:
+                outputs = {"2": {"text": [f"tag_for_{image}"]}}
             FakeComfyServer.state["history"][pid] = {
                 "status": {"status_str": "success", "messages": []},
                 "outputs": outputs,
@@ -122,3 +127,15 @@ def test_backend_wraps_an_unparseable_tagger_response_as_comfy_error(comfy_serve
     FakeComfyServer.state["unparseable"] = True
     with pytest.raises(cm.ComfyError):
         backend.tag(p)
+
+
+def test_judge_lands_a_must_tag_the_tagger_node_returned_with_escaped_parens(comfy_server, tmp_path, vocab_path):
+    v = load_vocabulary(vocab_path)
+    comfy = cm.Comfy(comfy_server, timeout=5)
+    backend = ComfyBackend(comfy, "wd-eva02-large-tagger-v3")
+    t = Tagger(backend, 0.35, v)
+    p = tmp_path / "x.png"
+    p.write_bytes(b"\x89PNGfake")
+    FakeComfyServer.state["outputs_override"] = {"2": {"tags": {"2b \\(nier:automata\\)": 0.95}}}
+    out = t.judge(p, ["2b (nier:automata)"])
+    assert out["2b (nier:automata)"] == ("LANDED", 0.95)

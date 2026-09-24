@@ -30,9 +30,11 @@ class ComfyBackend:
         }
         outputs = self.comfy.run_for_outputs(graph)
         try:
-            return ComfyTagger._parse(outputs)
+            parsed = ComfyTagger._parse(outputs)
         except BackendError as e:
             raise ComfyError(str(e)) from e
+        return {tag.replace("\\(", "(").replace("\\)", ")"): score
+                for tag, score in parsed.items()}
 
 
 def comfy_backend(comfy, model):
