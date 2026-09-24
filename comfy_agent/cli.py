@@ -62,7 +62,7 @@ def main(argv=None):
         if a.cmd == "run":
             task = load_task(a.task, vocab, categories)
             if not gpu_check():
-                raise RuntimeError("GPU busy: someone else is using more than the limit")
+                raise RuntimeError(cm.gpu_busy_message(comfy))
             o = loop.run_task(task, catalog, make_provider(a.arm), make_tools(a.arm, a.run, task), Path(a.out) / a.arm / str(a.run) / f"{task.id:03d}")
             print(json.dumps(o.__dict__, ensure_ascii=False)); return 0
         tasks = load_tasks(a.tasks, vocab, categories)
@@ -70,7 +70,7 @@ def main(argv=None):
             fn = baselines.run_seed_baseline if a.arm == "baseline-seed" else baselines.run_ladder
             for t in tasks:
                 if not gpu_check():
-                    raise RuntimeError("GPU busy: someone else is using more than the limit")
+                    raise RuntimeError(cm.gpu_busy_message(comfy))
                 o = fn(t, catalog, make_tools(a.arm, a.run, t), Path(a.out) / a.arm / str(a.run) / f"{t.id:03d}")
                 print(t.id, o.verdict, o.renders)
             return 0

@@ -67,7 +67,7 @@ def run_grid(tasks, catalog, comfy, tagger, results, out_dir, gpu_check=None):
     n_by_task = {task.id: 0 for task in pending}
     for (wfname, base), group in groupby(all_cells, key=lambda tc: (tc[1]["workflow"], tc[1]["base"])):
         if not gpu_check():
-            raise RuntimeError("GPU busy: someone else is using more than the limit")
+            raise RuntimeError(cm.gpu_busy_message(comfy))
         wf = cat.workflow(catalog, wfname)
         for task, c in group:
             must_norm = {normalise(t) for t in task.must}

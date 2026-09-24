@@ -1,7 +1,5 @@
 """Minimal ComfyUI HTTP client (from v0, websocket path removed) plus the GPU guard."""
 import json
-import shutil
-import subprocess
 import time
 import urllib.parse
 import urllib.request
@@ -129,42 +127,33 @@ class Comfy:
         return out["name"]
 
 
-def _nvidia_smi():
-    exe = shutil.which("nvidia-smi")
-    if not exe:
-        return None
-    try:
-        return subprocess.run([exe, "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
-                              capture_output=True, text=True, timeout=20).stdout
-    except subprocess.TimeoutExpired:
-        return None
-
-
-def gpu_used_mb():
-    """Total VRAM used across the GPU(s), summed from `nvidia-smi --query-gpu=memory.used`.
-    Returns None (never 0) when nvidia-smi is missing or nothing parses, so callers fail closed."""
-    text = _nvidia_smi()
-    if not text:
-        return None
-    total, saw_line = 0, False
-    for line in text.splitlines():
-        line = line.strip()
-        if not line.isdigit():
-            continue
-        total += int(line)
-        saw_line = True
-    return total if saw_line else None
+def gpu_used_mb(comfy):
+    """Free ComfyUI's own models (POST /free), wait for it to go idle, then read CUDA's
+    device-wide usage from GET /system_stats (devices[0].vram_total - vram_free, bytes -> MB).
+    On Windows/WDDM, nvidia-smi reports per-process memory as [N/A] and ComfyUI's
+    cudaMallocAsync allocator keeps torch_vram_total tiny even with ~9 GB of models resident,
+    so freeing ComfyUI's own share first is the only way to see a foreign workload's usage."""
+    comfy.free()
+    comfy.wait_idle()
+    d = comfy.system_stats()["devices"][0]
+    return (d["vram_total"] - d["vram_free"]) / (1024 * 1024)
 
 
 def gpu_ok(comfy, limit_mb=10240):
-    """Someone else's usage: total GPU memory used minus ComfyUI's own share
-    (GET /system_stats -> devices[0].torch_vram_total, bytes -> MB). Fails closed (False)
-    whenever nvidia-smi or system_stats cannot be read."""
-    used = gpu_used_mb()
-    if used is None:
-        return False
+    """True when CUDA's device-wide VRAM usage, measured after freeing ComfyUI's own models,
+    is within limit_mb. Fails closed (False) on any exception, missing key, or non-numeric
+    reading, since per-process GPU memory is not obtainable on a Windows/WDDM host."""
     try:
-        comfy_share_mb = comfy.system_stats()["devices"][0]["torch_vram_total"] / (1024 * 1024)
+        return gpu_used_mb(comfy) <= limit_mb
     except Exception:
         return False
-    return (used - comfy_share_mb) <= limit_mb
+
+
+def gpu_busy_message(comfy, limit_mb=10240):
+    """The RuntimeError text for a busy GPU, including the measured number when the
+    free-then-measure step (gpu_used_mb) succeeds."""
+    try:
+        used_mb = gpu_used_mb(comfy)
+    except Exception:
+        return f"GPU busy: someone else is using more than the limit (limit {limit_mb})"
+    return f"GPU busy: {used_mb:.0f} MiB used by others (limit {limit_mb})"

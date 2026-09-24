@@ -73,64 +73,67 @@ def test_run_raises_on_execution_error(server):
         cm.Comfy(server, timeout=5).run({})
 
 
-class FakeStatsComfy:
-    def __init__(self, torch_vram_total_bytes):
-        self.torch_vram_total_bytes = torch_vram_total_bytes
+class FakeVramComfy:
+    """Fake Comfy client for the GPU guard: free()/wait_idle() succeed (unless told to raise),
+    and system_stats() reports CUDA device-wide usage in bytes (or omits "devices" entirely)."""
+
+    def __init__(self, vram_total_mb=None, vram_free_mb=None, free_raises=False, has_devices=True):
+        self.vram_total_mb, self.vram_free_mb = vram_total_mb, vram_free_mb
+        self.free_raises, self.has_devices = free_raises, has_devices
+        self.freed = self.waited = False
+
+    def free(self):
+        if self.free_raises:
+            raise cm.ComfyError("free failed")
+        self.freed = True
+
+    def wait_idle(self):
+        self.waited = True
+        return True
 
     def system_stats(self):
-        return {"devices": [{"torch_vram_total": self.torch_vram_total_bytes}]}
+        if not self.has_devices:
+            return {}
+        return {"devices": [{"vram_total": self.vram_total_mb * 1024 * 1024,
+                             "vram_free": self.vram_free_mb * 1024 * 1024}]}
 
 
-def test_gpu_used_mb_sums_nvidia_smi_lines(monkeypatch):
-    monkeypatch.setattr(cm, "_nvidia_smi", lambda: "8000\n3000\n")
-    assert cm.gpu_used_mb() == 11000
+def test_gpu_used_mb_reads_device_usage_after_freeing():
+    c = FakeVramComfy(vram_total_mb=12466, vram_free_mb=12466 - 1755)
+    assert cm.gpu_used_mb(c) == pytest.approx(1755, abs=0.01)
+    assert c.freed and c.waited
 
 
-def test_gpu_used_mb_none_without_nvidia_smi(monkeypatch):
-    monkeypatch.setattr(cm, "_nvidia_smi", lambda: None)
-    assert cm.gpu_used_mb() is None
+def test_gpu_ok_passes_under_limit():
+    c = FakeVramComfy(vram_total_mb=12466, vram_free_mb=12466 - 1755)
+    assert cm.gpu_ok(c, limit_mb=10240) is True
 
 
-def test_gpu_used_mb_none_on_unparseable_output(monkeypatch):
-    monkeypatch.setattr(cm, "_nvidia_smi", lambda: "[N/A]\n[N/A]\n")
-    assert cm.gpu_used_mb() is None
+def test_gpu_ok_fails_over_limit():
+    c = FakeVramComfy(vram_total_mb=32000, vram_free_mb=500)
+    assert cm.gpu_ok(c, limit_mb=10240) is False
 
 
-def test_gpu_used_mb_none_on_nvidia_smi_timeout(monkeypatch):
-    monkeypatch.setattr(cm.shutil, "which", lambda name: "/usr/bin/nvidia-smi")
-
-    def boom(*a, **k):
-        raise cm.subprocess.TimeoutExpired(cmd="nvidia-smi", timeout=20)
-    monkeypatch.setattr(cm.subprocess, "run", boom)
-    assert cm.gpu_used_mb() is None
+def test_gpu_ok_fails_closed_when_free_raises():
+    c = FakeVramComfy(vram_total_mb=1, vram_free_mb=1, free_raises=True)
+    assert cm.gpu_ok(c) is False
 
 
-def test_gpu_ok_passes_under_limit_only_after_subtracting_comfy_share(monkeypatch):
-    monkeypatch.setattr(cm, "_nvidia_smi", lambda: "14000\n")
-    assert cm.gpu_ok(FakeStatsComfy(6000 * 1024 * 1024), limit_mb=10240) is True
+def test_gpu_ok_fails_closed_when_devices_missing():
+    c = FakeVramComfy(has_devices=False)
+    assert cm.gpu_ok(c) is False
 
 
-def test_gpu_ok_fails_over_limit(monkeypatch):
-    monkeypatch.setattr(cm, "_nvidia_smi", lambda: "20000\n")
-    assert cm.gpu_ok(FakeStatsComfy(1024 * 1024 * 1024), limit_mb=10240) is False
+def test_gpu_busy_message_includes_the_measured_number():
+    c = FakeVramComfy(vram_total_mb=32000, vram_free_mb=500)
+    msg = cm.gpu_busy_message(c, limit_mb=10240)
+    assert "31500" in msg and "10240" in msg
 
 
-def test_gpu_ok_fails_closed_without_nvidia_smi(monkeypatch):
-    monkeypatch.setattr(cm, "_nvidia_smi", lambda: None)
-    assert cm.gpu_ok(FakeStatsComfy(0)) is False
-
-
-def test_gpu_ok_fails_closed_on_garbage_nvidia_smi_output(monkeypatch):
-    monkeypatch.setattr(cm, "_nvidia_smi", lambda: "not,a,number\n")
-    assert cm.gpu_ok(FakeStatsComfy(0)) is False
-
-
-def test_gpu_ok_fails_closed_when_system_stats_unreadable(monkeypatch):
-    monkeypatch.setattr(cm, "_nvidia_smi", lambda: "9000\n")
-    class Broken:
-        def system_stats(self):
-            raise cm.ComfyError("unreachable")
-    assert cm.gpu_ok(Broken()) is False
+def test_gpu_busy_message_falls_back_when_measurement_fails():
+    c = FakeVramComfy(has_devices=False)
+    msg = cm.gpu_busy_message(c, limit_mb=10240)
+    assert "GPU busy" in msg and "10240" in msg
 
 
 def test_run_raises_comfy_error_on_transport_failure():
