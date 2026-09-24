@@ -89,6 +89,21 @@ def test_kind_is_first_comma_separated_tag_stripped(tmp_path):
     assert kinds["list_tags"] == "char:x"
 
 
+def test_kind_is_first_colon_tag_when_series_listed_first(tmp_path):
+    meta(tmp_path, "series_char", tags=["nier", "char:2b (nier:automata)"])
+    meta(tmp_path, "no_colon", tags=["fate"])
+    cat = c.build(tmp_path, WORKFLOWS, "t", "v", 0.35)
+    kinds = {l["file"]: l["kind"] for l in cat["loras"]}
+    assert kinds["series_char"] == "char:2b (nier:automata)"
+    assert kinds["no_colon"] == "fate"
+
+
+def test_nsfw_skip_warns(tmp_path):
+    meta(tmp_path, "nsfw", civitai={"trainedWords": "x", "model": {"nsfw": True}})
+    with pytest.warns(UserWarning, match="nsfw"):
+        c.build(tmp_path, WORKFLOWS, "t", "v", 0.35)
+
+
 def test_match_lora_per_workflow_first_by_order_and_skips_empty_trigger(catalog_dict):
     m = c.match_lora(catalog_dict, "sdxl", ["1girl", "emilia (re:zero)", "white dress"])
     assert m["file"] == "Emilia-all outfits-illu"

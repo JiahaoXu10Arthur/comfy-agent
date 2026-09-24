@@ -22,6 +22,7 @@ def read_metadata(path):
         warnings.warn(f"{name}: no civitai block, nsfw unknown, skipped")
         return None
     if (civ.get("model") or {}).get("nsfw"):
+        warnings.warn(f"{name}: nsfw, skipped")
         return None
     wf = BASE_TO_WORKFLOW.get(d.get("base_model"))
     if wf is None:
@@ -45,7 +46,7 @@ def read_metadata(path):
     if isinstance(tags, str):
         kind = tags.split(",")[0].strip()
     else:
-        kind = tags[0].strip() if tags else ""
+        kind = next((t.strip() for t in tags if ":" in t), tags[0].strip() if tags else "")
     return {"file": name, "workflow": wf, "trigger": trigger, "strength": strength, "kind": kind}
 
 
