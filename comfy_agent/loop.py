@@ -14,6 +14,7 @@ STOP_REASONS = ("model", "budget", "turns", "no_progress", "not_judgeable", "too
 SYSTEM_PROMPT = """You drive a ComfyUI image pipeline to make every required tag appear in one render.
 You never see images. You see the tagger's per-tag score (0-1, threshold {threshold}) for each render.
 Rules the code enforces: one factor per render (say which in claim); switching workflow or base is a restart;
+a render has no scores until you call tag_check(render_id) — judge every render before the next one;
 conclude ACHIEVED only with a render whose tags all LANDED; NOT_ACHIEVABLE_HERE must say what the catalog lacks.
 Budget: {budget} renders. Prefer the cheapest change that could move the lowest-scoring tag. Call one tool per turn."""
 
@@ -38,12 +39,17 @@ def _score_cell(k, v):
     return f"{k}={v[1]:.2f}{mark}"
 
 
-def build_messages(task, catalog, tried, last, rejection, n_renders):
+def _table_row(t):
+    if "render_id" in t:                          # rendered, not yet judged
+        return f"{t['n']:02d} | {t['claim']} | {' '.join(t['factors'])} | unchecked: call tag_check(\"{t['render_id']}\") | min -"
+    return (f"{t['n']:02d} | {t['claim']} | {' '.join(t['factors'])} | "
+            f"{' '.join(_score_cell(k, v) for k, v in t['scores'].items())} | min {t['min_score']}")
+
+
+def build_messages(task, catalog, tried, pending, last, rejection, n_renders):
     sys_msg = SYSTEM_PROMPT.format(threshold=catalog["threshold"], budget=task.budget)
     wfs = "\n".join(f"{w['name']}: bases {w['bases']}; defaults {w['defaults']}" for w in catalog["workflows"])
-    table = "\n".join(f"{t['n']:02d} | {t['claim']} | {' '.join(t['factors'])} | "
-                      f"{' '.join(_score_cell(k, v) for k, v in t['scores'].items())} | min {t['min_score']}"
-                      for t in tried) or "(none yet)"
+    table = "\n".join(_table_row(t) for t in sorted(tried + list(pending.values()), key=lambda t: t["n"])) or "(none yet)"
     user = (f"Task {task.id} ({task.category}). must: {', '.join(task.must)}. budget {task.budget}, used {n_renders}.\n"
             f"Workflows:\n{wfs}\nLoRAs (file | workflow | trigger | kind):\n{cat.for_model(catalog)}\n"
             f"Tried so far (n | claim | factors | scores, ! = MISSING | min):\n{table}\n")
@@ -59,6 +65,7 @@ def run_task(task, catalog, provider, tools, run_dir, max_turns=24, no_progress=
     steps = open(run_dir / "steps.jsonl", "w", encoding="utf-8")
     t0 = time.time()
     tried, checked_ids, last, rejection = [], set(), None, None
+    pending = {}                                    # render_id -> row, rendered but not tag_checked
     turns = calls = pt = ct = 0
     bad_calls = tool_errors = 0
     best_m, stale = None, 0                        # per-branch: resets on every restart
@@ -91,7 +98,7 @@ def run_task(task, catalog, provider, tools, run_dir, max_turns=24, no_progress=
         while final is None:
             if turns >= max_turns:
                 final = forced("BUDGET_EXHAUSTED", "turns"); break
-            messages = build_messages(task, catalog, tried, last, rejection, tools.n_renders)
+            messages = build_messages(task, catalog, tried, pending, last, rejection, tools.n_renders)
             turn_t0 = time.time()
             try:
                 resp = provider.chat(messages, TOOL_SCHEMAS)
@@ -144,6 +151,9 @@ def run_task(task, catalog, provider, tools, run_dir, max_turns=24, no_progress=
             if call["name"] == "render":
                 if call["arguments"].get("claim") == "start" and tried:
                     best_m, stale = None, 0            # restart: new branch, new baseline
+                row = tools.results.get(result["render_id"])
+                pending[row["render_id"]] = {"n": row["n"], "claim": row["claim"], "factors": row["factors"],
+                                             "render_id": row["render_id"]}
             if call["name"] == "tag_check":
                 row = tools.results.get(result["render_id"])
                 if any(v[0] == "NOT_JUDGEABLE" for v in row["scores"].values()):
@@ -153,6 +163,7 @@ def run_task(task, catalog, provider, tools, run_dir, max_turns=24, no_progress=
                     task_best_m, task_best_rid = m, result["render_id"]
                 if result["render_id"] not in checked_ids:
                     checked_ids.add(result["render_id"])
+                    pending.pop(result["render_id"], None)
                     tried.append({"n": row["n"], "claim": row["claim"], "factors": row["factors"],
                                   "scores": row["scores"], "min_score": row["min_score"]})
                     if best_m is None or m >= best_m + epsilon:

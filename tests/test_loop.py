@@ -256,3 +256,19 @@ def test_tool_error_streak_resets_on_intervening_tool_error(make, tmp_path):
     out = lp.run_task(task, tools.catalog, prov, tools, tmp_path / "run")
     assert not (out.verdict == "BLOCKED" and out.stop_reason == "tool_error")
     assert out.verdict == "ACHIEVED"
+
+
+def test_unchecked_renders_are_listed_and_prompt_demands_tag_check(make, tmp_path):
+    # deepseek 2026-09-30: rendered 12 times without one tag_check because unchecked renders vanished from the table
+    task, provider, tools = make([0.1], [
+        render_call(1001, "start"),
+        tc("history", query="on side"),
+        tc("tag_check", render_id="agent-deepseek-1-7-01"),
+        tc("history", query="on side"),
+        tc("conclude", verdict="NOT_ACHIEVABLE_HERE", render_id="agent-deepseek-1-7-01", missing="x")])
+    lp.run_task(task, tools.catalog, provider, tools, tmp_path / "run")
+    assert "tag_check" in provider.seen[0][0]["content"]                      # system prompt says to judge every render
+    after_render = provider.seen[1][1]["content"]
+    assert '01 | start' in after_render and 'unchecked' in after_render and 'tag_check("agent-deepseek-1-7-01")' in after_render
+    after_check = provider.seen[3][1]["content"]
+    assert "unchecked" not in after_check and "on side=0.10!" in after_check
