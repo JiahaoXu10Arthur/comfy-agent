@@ -272,3 +272,11 @@ def test_unchecked_renders_are_listed_and_prompt_demands_tag_check(make, tmp_pat
     assert '01 | start' in after_render and 'unchecked' in after_render and 'tag_check("agent-deepseek-1-7-01")' in after_render
     after_check = provider.seen[3][1]["content"]
     assert "unchecked" not in after_check and "on side=0.10!" in after_check
+
+
+def test_summary_lists_renders_left_unchecked(make, tmp_path):
+    task, provider, tools = make([0.1], [render_call(1001, "start")] + [{"text": "no call"}] * 3)
+    out = lp.run_task(task, tools.catalog, provider, tools, tmp_path / "run")
+    assert out.stop_reason == "bad_call" and out.renders == 1
+    summ = (tmp_path / "run/summary.md").read_text(encoding="utf-8")
+    assert "01 | start" in summ and "unchecked" in summ

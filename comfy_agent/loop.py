@@ -179,17 +179,16 @@ def run_task(task, catalog, provider, tools, run_dir, max_turns=24, no_progress=
     finally:
         steps.close()
         if final is not None:
-            _summary(run_dir, task, provider, catalog, tried, final)
+            _summary(run_dir, task, provider, catalog, tried, pending, final)
     return final
 
 
-def _summary(run_dir, task, provider, catalog, tried, out):
+def _summary(run_dir, task, provider, catalog, tried, pending, out):
     lines = [f"task {task.id}   must: {', '.join(task.must)}   budget {task.budget}",
              f"model {getattr(provider, 'name', '?')}   tagger {catalog['tagger']} @{catalog['threshold']}", "",
              "#  | claim | factors | scores (! = MISSING) | min"]
-    for t in tried:
-        sc = " ".join(f"{k}={v[1]:.2f}{'' if v[0]=='LANDED' else '!'}" for k, v in t["scores"].items())
-        lines.append(f"{t['n']:02d} | {t['claim']} | {' '.join(t['factors'])} | {sc} | {t['min_score']}")
+    for t in sorted(tried + list(pending.values()), key=lambda t: t["n"]):
+        lines.append(_table_row(t))
     lines += ["", f"结论 {out.verdict} @ {out.render_id}（stop_reason {out.stop_reason}），{out.renders} 张，model 调用 {out.calls} 次，"
               f"{out.prompt_tokens}+{out.completion_tokens} tokens，{out.seconds} 秒"]
     if out.evidence:
