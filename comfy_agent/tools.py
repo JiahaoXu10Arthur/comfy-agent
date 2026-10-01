@@ -31,7 +31,9 @@ TOOL_SCHEMAS = [
     {"type": "function", "function": {"name": "conclude", "description":
         "Stop. verdict ACHIEVED needs a render_id whose tags all LANDED. NOT_ACHIEVABLE_HERE needs missing: what the catalog lacks.",
         "parameters": {"type": "object", "properties": {
-            "verdict": {"type": "string", "enum": list(MODEL_VERDICTS)}, "render_id": {"type": ["string", "null"]}, "missing": {"type": "string"}},
+            "verdict": {"type": "string", "enum": list(MODEL_VERDICTS)},
+            "render_id": {"type": "string", "description": "one of this task's render ids; for NOT_ACHIEVABLE_HERE the best render you have"},
+            "missing": {"type": "string"}},
             "required": ["verdict", "render_id", "missing"]}}},
 ]
 
@@ -124,7 +126,9 @@ class Tools:
     def _own(self, render_id):
         row = self.results.get(render_id) if render_id else None
         if row is None or (row["arm"], row["run"], row["task_id"]) != (self.arm, self.run, self.task.id):
-            raise BadCall(f"render_id {render_id!r} does not belong to this task")
+            own = self.results.renders(self.arm, self.run, self.task.id)
+            hint = f"latest: {own[-1]['render_id']}" if own else "none yet: render first"
+            raise BadCall(f"render_id {render_id!r} does not belong to this task; pass one of this task's renders ({hint})")
         return row
 
     def conclude(self, args, stop_reason="model"):

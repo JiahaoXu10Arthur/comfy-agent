@@ -164,3 +164,14 @@ def test_render_unknown_lora_is_tool_error(tools):
     with pytest.raises(tl.ToolError, match="nope"):
         tools.render(call(loras=[{"file": "nope", "strength": 1.0}]))
     assert tools._comfy.graphs == []
+
+
+def test_conclude_with_null_render_id_names_this_tasks_latest_render(tools):
+    # deepseek 2026-10-02: concluded NOT_ACHIEVABLE_HERE three times with render_id null and was refused each time
+    conclude = next(s for s in tl.TOOL_SCHEMAS if s["function"]["name"] == "conclude")
+    assert conclude["function"]["parameters"]["properties"]["render_id"]["type"] == "string"
+    with pytest.raises(tl.ToolError, match="render first"):
+        tools.conclude({"verdict": "NOT_ACHIEVABLE_HERE", "render_id": None, "missing": "x"})
+    tools.render(call())
+    with pytest.raises(tl.ToolError, match=r"one of this task's renders.*agent-deepseek-1-7-01"):
+        tools.conclude({"verdict": "NOT_ACHIEVABLE_HERE", "render_id": None, "missing": "x"})
