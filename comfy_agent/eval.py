@@ -113,7 +113,7 @@ def write_report(path, m, totals):
     cols = ["结论正确率", "平均渲染", "换过 workflow/底模/LoRA", "用过 history", "只靠 seed 成功", "判错率", "pass^3", "BLOCKED"]
     lines = ["| arm | " + " | ".join(cols) + " |", "|---|" + "---|" * len(cols)]
     for arm, x in m.items():
-        lines.append(f"| {arm} | {x['correct_rate']:.2f} | {x['avg_renders']:.1f} | {x['switched']}/{x['n']} | {x['used_history']}/{x['n']} | "
+        lines.append(f"| {arm} | {x['correct_rate']:.2f} | {x['avg_renders']:.2f} | {x['switched']}/{x['n']} | {x['used_history']}/{x['n']} | "
                      f"{x['seed_only']}/{x['n']*3} | {x['error_rate']:.2f} | {x['pass3']}/{x['n']} | {x['blocked']}/{x['n']*3} |")
     lines += ["", f"总渲染 {totals['renders']} 张，总耗时 {totals['minutes']} 分钟，总花费 ${totals['dollars']}（含网格；按 deepseek-chat 标价估）", "",
               "pass^3 = 三遍结论都正确的任务数（τ-bench 定义，不是 pass@3）。BLOCKED 的运行剔除后算其它列。n 小，只做定性。", "",

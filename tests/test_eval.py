@@ -137,3 +137,4 @@ def test_write_report(tmp_path):
     text = (tmp_path / "report.md").read_text(encoding="utf-8")
     assert "agent-deepseek" in text and "总耗时 95.5 分钟" in text and "pass^3" in text and "旋钮档 agent 比写死阶梯省渲染、判得准" in text
     assert "按 deepseek-chat 标价估" in text
+    assert "| 4.00 |" in text                                   # two decimals: 1.07 vs 1.13 must not both print as 1.1
