@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="330" viewBox="0 0 900 330" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="13">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#57606a"/>
+    </marker>
+  </defs>
+  <style>
+    .box{fill:#f6f8fa;stroke:#d0d7de;stroke-width:1.2}
+    .code{fill:#ddf4ff;stroke:#54aeff}
+    .model{fill:#fff8c5;stroke:#d4a72c}
+    .ext{fill:#ffffff;stroke:#8c959f;stroke-dasharray:4 3}
+    .t{fill:#1f2328}
+    .m{fill:#57606a;font-size:11px}
+    .h{fill:#1f2328;font-weight:600}
+    .e{stroke:#57606a;stroke-width:1.3;fill:none;marker-end:url(#a)}
+  </style>
+
+  <!-- task -->
+  <rect class="box" x="10" y="26" width="150" height="78" rx="6"/>
+  <text class="h" x="85" y="48" text-anchor="middle">task</text>
+  <text class="m" x="85" y="68" text-anchor="middle">must: 2boys, from behind</text>
+  <text class="m" x="85" y="86" text-anchor="middle">budget 12 renders</text>
+
+  <!-- code builds the turn -->
+  <rect class="box code" x="190" y="16" width="190" height="98" rx="6"/>
+  <text class="h" x="285" y="38" text-anchor="middle">code builds the turn</text>
+  <text class="m" x="285" y="58" text-anchor="middle">catalogue, one line per LoRA</text>
+  <text class="m" x="285" y="75" text-anchor="middle">table of every render so far</text>
+  <text class="m" x="285" y="92" text-anchor="middle">last tool result, last rejection</text>
+
+  <!-- model -->
+  <rect class="box model" x="410" y="30" width="166" height="70" rx="6"/>
+  <text class="h" x="493" y="52" text-anchor="middle">LLM</text>
+  <text class="m" x="493" y="72" text-anchor="middle">stateless, one tool call per turn</text>
+  <text class="m" x="493" y="88" text-anchor="middle">declares the one factor it changed</text>
+
+  <!-- tools -->
+  <rect class="box code" x="606" y="10" width="140" height="34" rx="6"/>
+  <text class="t" x="676" y="32" text-anchor="middle">render(…, claim)</text>
+  <rect class="box code" x="606" y="54" width="140" height="34" rx="6"/>
+  <text class="t" x="676" y="76" text-anchor="middle">tag_check(id)</text>
+  <rect class="box code" x="606" y="98" width="140" height="34" rx="6"/>
+  <text class="t" x="676" y="120" text-anchor="middle">history(query)</text>
+  <rect class="box code" x="606" y="142" width="140" height="34" rx="6"/>
+  <text class="t" x="676" y="164" text-anchor="middle">conclude(verdict, id)</text>
+
+  <!-- external -->
+  <rect class="box ext" x="770" y="10" width="120" height="34" rx="6"/>
+  <text class="t" x="830" y="32" text-anchor="middle">ComfyUI → PNG</text>
+  <rect class="box ext" x="770" y="54" width="120" height="34" rx="6"/>
+  <text class="t" x="830" y="76" text-anchor="middle">WD14 → scores</text>
+  <rect class="box ext" x="770" y="98" width="120" height="78" rx="6"/>
+  <text class="h" x="830" y="120" text-anchor="middle">results.sqlite</text>
+  <text class="m" x="830" y="140" text-anchor="middle">every render: factors,</text>
+  <text class="m" x="830" y="156" text-anchor="middle">scores, verdict</text>
+
+  <!-- edges -->
+  <path class="e" d="M160,65 L190,65"/>
+  <path class="e" d="M380,65 L410,65"/>
+  <path class="e" d="M576,55 L606,27"/>
+  <path class="e" d="M576,62 L606,71"/>
+  <path class="e" d="M576,72 L606,115"/>
+  <path class="e" d="M576,80 L606,159"/>
+  <path class="e" d="M746,27 L770,27"/>
+  <path class="e" d="M746,71 L770,71"/>
+  <path class="e" d="M746,115 L770,125"/>
+  <path class="e" d="M746,159 L770,150"/>
+  <!-- results feed the next turn -->
+  <path class="e" d="M830,176 L830,236 L285,236 L285,114"/>
+  <text class="m" x="557" y="230" text-anchor="middle">next turn: the table is rebuilt from results.sqlite, the model itself remembers nothing</text>
+
+  <!-- gate note -->
+  <text class="m" x="676" y="196" text-anchor="middle">render: single-factor gate before dispatch</text>
+  <text class="m" x="676" y="210" text-anchor="middle">conclude: ACHIEVED only if that render's tags all landed</text>
+
+  <!-- stop rules -->
+  <rect class="box code" x="10" y="258" width="880" height="58" rx="6"/>
+  <text class="h" x="24" y="280">code decides when it is over</text>
+  <text class="m" x="24" y="302">budget spent · min tag score flat for 3 renders · 24 turns · 3 bad calls · 2 ComfyUI errors in a row → forced verdict with a named stop reason</text>
+  <text class="m" x="876" y="280" text-anchor="end">baselines: same tools, same gate, same judge, no LLM</text>
+</svg>
