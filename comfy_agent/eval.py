@@ -67,6 +67,7 @@ def run_eval(tasks, catalog, arms, runs, make_provider, make_tools, results, out
                            "seconds": o.seconds}
                     rows.append(row)
                     rows_file.write(json.dumps(row, ensure_ascii=False) + "\n")
+                    rows_file.flush()
     return rows
 
 
