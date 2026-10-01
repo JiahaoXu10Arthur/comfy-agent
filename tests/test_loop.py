@@ -281,3 +281,32 @@ def test_summary_lists_renders_left_unchecked(make, tmp_path):
     assert out.stop_reason == "bad_call" and out.renders == 1
     summ = (tmp_path / "run/summary.md").read_text(encoding="utf-8")
     assert "01 | start" in summ and "unchecked" in summ
+
+
+def test_identical_repeated_call_is_rejected_without_dispatch(make, tmp_path):
+    # deepseek 2026-10-01: 20 of 24 turns were history("uzuki sayaka") → [] again and again
+    task, provider, tools = make([0.1], [
+        tc("history", query="on side"), tc("history", query="on side"), tc("history", query="on side"),
+        tc("history", query="on side"), tc("history", query="on side"),
+        render_call(1001, "start"), tc("tag_check", render_id="agent-deepseek-1-7-01"),
+        tc("conclude", verdict="NOT_ACHIEVABLE_HERE", render_id="agent-deepseek-1-7-01", missing="x")])
+    out = lp.run_task(task, tools.catalog, provider, tools, tmp_path / "run")
+    assert out.verdict == "NOT_ACHIEVABLE_HERE" and out.stop_reason == "model" and out.turns == 8   # repeats are turns, not BLOCKED
+    lines = [json.loads(l) for l in (tmp_path / "run/steps.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert lines[0]["error"] is None and lines[1]["error"].startswith("identical to turn 1") and lines[4]["error"].startswith("identical to turn 1")
+    assert "the answer will not change" in provider.seen[2][1]["content"]
+
+
+def test_prompt_carries_history_queries_already_asked(make, tmp_path):
+    task, provider, tools = make([0.1], [
+        tc("history", query="on side"), tc("history", query="lying"),
+        render_call(1001, "start"), tc("tag_check", render_id="agent-deepseek-1-7-01"),
+        tc("conclude", verdict="NOT_ACHIEVABLE_HERE", render_id="agent-deepseek-1-7-01", missing="x")])
+    lp.run_task(task, tools.catalog, provider, tools, tmp_path / "run")
+    assert "history already asked" not in provider.seen[0][1]["content"]
+    assert 'history already asked: "on side" (0 rows), "lying" (0 rows)' in provider.seen[2][1]["content"]
+
+
+def test_system_prompt_states_the_restart_and_zero_score_rules():
+    s = lp.SYSTEM_PROMPT
+    assert "previous render's workflow and base" in s and "near 0" in s and "do not ask again" in s

@@ -15,6 +15,9 @@ SYSTEM_PROMPT = """You drive a ComfyUI image pipeline to make every required tag
 You never see images. You see the tagger's per-tag score (0-1, threshold {threshold}) for each render.
 Rules the code enforces: one factor per render (say which in claim); switching workflow or base is a restart;
 a render has no scores until you call tag_check(render_id) — judge every render before the next one;
+weight / move / reword / knob changes apply to the previous render's workflow and base — to change workflow or base, claim start with plain tags;
+a tag scoring near 0 means that base does not know it: restart on another workflow or base, open a matching LoRA, or conclude;
+history lists renders of other tasks in this run — an empty answer stays empty, do not ask again;
 conclude ACHIEVED only with a render whose tags all LANDED; NOT_ACHIEVABLE_HERE must say what the catalog lacks.
 Budget: {budget} renders. Prefer the cheapest change that could move the lowest-scoring tag. Call one tool per turn."""
 
@@ -46,7 +49,7 @@ def _table_row(t):
             f"{' '.join(_score_cell(k, v) for k, v in t['scores'].items())} | min {t['min_score']}")
 
 
-def build_messages(task, catalog, tried, pending, last, rejection, n_renders):
+def build_messages(task, catalog, tried, pending, asked, last, rejection, n_renders):
     sys_msg = SYSTEM_PROMPT.format(threshold=catalog["threshold"], budget=task.budget)
     wfs = "\n".join(f"{w['name']}: bases {w['bases']}; defaults {w['defaults']}" for w in catalog["workflows"])
     table = "\n".join(_table_row(t) for t in sorted(tried + list(pending.values()), key=lambda t: t["n"])) or "(none yet)"
@@ -54,6 +57,8 @@ def build_messages(task, catalog, tried, pending, last, rejection, n_renders):
             f"seed_hint {task.seed_hint} (start there; seed is a knob you may change).\n"
             f"Workflows:\n{wfs}\nLoRAs (file | workflow | trigger | kind):\n{cat.for_model(catalog)}\n"
             f"Tried so far (n | claim | factors | scores, ! = MISSING | min):\n{table}\n")
+    if asked:
+        user += "history already asked: " + ", ".join(f'"{q}" ({n} rows)' for q, n in asked.items()) + "\n"
     if last is not None:
         user += f"Last tool result: {json.dumps(last, ensure_ascii=False)}\n"
     if rejection:
@@ -67,6 +72,8 @@ def run_task(task, catalog, provider, tools, run_dir, max_turns=24, no_progress=
     t0 = time.time()
     tried, checked_ids, last, rejection = [], set(), None, None
     pending = {}                                    # render_id -> row, rendered but not tag_checked
+    asked = {}                                      # history query -> rows returned (the model forgets)
+    last_sig, last_sig_turn = None, 0               # the previous valid call, to refuse an identical repeat
     turns = calls = pt = ct = 0
     bad_calls = tool_errors = 0
     best_m, stale = None, 0                        # per-branch: resets on every restart
@@ -99,7 +106,7 @@ def run_task(task, catalog, provider, tools, run_dir, max_turns=24, no_progress=
         while final is None:
             if turns >= max_turns:
                 final = forced("BUDGET_EXHAUSTED", "turns"); break
-            messages = build_messages(task, catalog, tried, pending, last, rejection, tools.n_renders)
+            messages = build_messages(task, catalog, tried, pending, asked, last, rejection, tools.n_renders)
             turn_t0 = time.time()
             try:
                 resp = provider.chat(messages, TOOL_SCHEMAS)
@@ -116,6 +123,11 @@ def run_task(task, catalog, provider, tools, run_dir, max_turns=24, no_progress=
                 record["error"] = rejection; write_step(record)
                 if bad_calls >= 3:
                     final = forced("BLOCKED", "bad_call")
+                continue
+            sig = (call["name"], json.dumps(call["arguments"], sort_keys=True, ensure_ascii=False))
+            if sig == last_sig:
+                rejection = f"identical to turn {last_sig_turn}: the answer will not change; change something or conclude"
+                record["error"] = rejection; write_step(record)
                 continue
             if call["name"] == "render" and tools.n_renders >= task.budget:
                 rejection = "budget exhausted"
@@ -147,6 +159,7 @@ def run_task(task, catalog, provider, tools, run_dir, max_turns=24, no_progress=
             record["result"] = result; record["error"] = rejection
             write_step(record)
             last = result
+            last_sig, last_sig_turn = (sig, turns) if result is not None else (None, 0)   # only an answered call is "the same answer"
             if result is None:
                 continue
             if call["name"] == "render":
@@ -155,6 +168,8 @@ def run_task(task, catalog, provider, tools, run_dir, max_turns=24, no_progress=
                 row = tools.results.get(result["render_id"])
                 pending[row["render_id"]] = {"n": row["n"], "claim": row["claim"], "factors": row["factors"],
                                              "render_id": row["render_id"]}
+            if call["name"] == "history":
+                asked[str(call["arguments"].get("query", ""))] = len(result["rows"])
             if call["name"] == "tag_check":
                 row = tools.results.get(result["render_id"])
                 if any(v[0] == "NOT_JUDGEABLE" for v in row["scores"].values()):
