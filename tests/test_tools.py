@@ -184,3 +184,16 @@ def test_conclude_truncates_a_long_missing_instead_of_refusing(tools):
     out = tools.conclude({"verdict": "NOT_ACHIEVABLE_HERE", "render_id": r["render_id"], "missing": "x" * 300})
     assert out["verdict"] == "NOT_ACHIEVABLE_HERE"
     assert tools.results.get(r["render_id"])["missing"] == "x" * 200
+
+
+def test_render_id_may_be_the_row_number_from_the_table(tools):
+    # deepseek 2026-10-02: concluded with render_id "03" / "2" — the n column of the table it is shown
+    r1 = tools.render(call()); tools.tag_check({"render_id": r1["render_id"]})
+    tools._backend.detected["on_side"] = 0.9
+    r2 = tools.render(call(seed=1002, claim="knob:seed"))
+    t = tools.tag_check({"render_id": "02"})
+    assert t["render_id"] == r2["render_id"] and t["all_landed"]
+    out = tools.conclude({"verdict": "ACHIEVED", "render_id": "2", "missing": ""})
+    assert out["render_id"] == r2["render_id"]
+    with pytest.raises(tl.ToolError, match="belong"):
+        tools.conclude({"verdict": "ACHIEVED", "render_id": "7", "missing": ""})

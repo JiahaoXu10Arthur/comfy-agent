@@ -124,9 +124,12 @@ class Tools:
                           "scores": {k: list(v) for k, v in r["scores"].items()}} for r in rows]}
 
     def _own(self, render_id):
+        own = self.results.renders(self.arm, self.run, self.task.id)
+        if isinstance(render_id, (int, str)) and str(render_id).strip().isdigit():      # the n column of the table
+            n = int(str(render_id).strip())
+            render_id = next((r["render_id"] for r in own if r["n"] == n), render_id)
         row = self.results.get(render_id) if render_id else None
         if row is None or (row["arm"], row["run"], row["task_id"]) != (self.arm, self.run, self.task.id):
-            own = self.results.renders(self.arm, self.run, self.task.id)
             hint = f"latest: {own[-1]['render_id']}" if own else "none yet: render first"
             raise BadCall(f"render_id {render_id!r} does not belong to this task; pass one of this task's renders ({hint})")
         return row
@@ -144,7 +147,7 @@ class Tools:
             raise ToolError("NOT_ACHIEVABLE_HERE needs missing: one sentence on what the catalog lacks")
         evidence = evidence_for(row)
         self.results.set_conclusion(row["render_id"], verdict, stop_reason, missing)
-        return {"verdict": verdict, "render_id": rid, "evidence": evidence, "missing": missing}
+        return {"verdict": verdict, "render_id": row["render_id"], "evidence": evidence, "missing": missing}
 
     def dispatch(self, name, args):
         fn = {"render": self.render, "tag_check": self.tag_check, "history": self.history, "conclude": self.conclude}.get(name)
