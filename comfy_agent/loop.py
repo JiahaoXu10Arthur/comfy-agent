@@ -40,7 +40,7 @@ def _score_cell(k, v):
 
 
 def _table_row(t):
-    if "render_id" in t:                          # rendered, not yet judged
+    if not t.get("scores"):                       # rendered, not yet judged
         return f"{t['n']:02d} | {t['claim']} | {' '.join(t['factors'])} | unchecked: call tag_check(\"{t['render_id']}\") | min -"
     return (f"{t['n']:02d} | {t['claim']} | {' '.join(t['factors'])} | "
             f"{' '.join(_score_cell(k, v) for k, v in t['scores'].items())} | min {t['min_score']}")
@@ -50,7 +50,8 @@ def build_messages(task, catalog, tried, pending, last, rejection, n_renders):
     sys_msg = SYSTEM_PROMPT.format(threshold=catalog["threshold"], budget=task.budget)
     wfs = "\n".join(f"{w['name']}: bases {w['bases']}; defaults {w['defaults']}" for w in catalog["workflows"])
     table = "\n".join(_table_row(t) for t in sorted(tried + list(pending.values()), key=lambda t: t["n"])) or "(none yet)"
-    user = (f"Task {task.id} ({task.category}). must: {', '.join(task.must)}. budget {task.budget}, used {n_renders}.\n"
+    user = (f"Task {task.id} ({task.category}). must: {', '.join(task.must)}. budget {task.budget}, used {n_renders}. "
+            f"seed_hint {task.seed_hint} (start there; seed is a knob you may change).\n"
             f"Workflows:\n{wfs}\nLoRAs (file | workflow | trigger | kind):\n{cat.for_model(catalog)}\n"
             f"Tried so far (n | claim | factors | scores, ! = MISSING | min):\n{table}\n")
     if last is not None:

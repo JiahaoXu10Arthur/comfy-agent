@@ -268,6 +268,7 @@ def test_unchecked_renders_are_listed_and_prompt_demands_tag_check(make, tmp_pat
         tc("conclude", verdict="NOT_ACHIEVABLE_HERE", render_id="agent-deepseek-1-7-01", missing="x")])
     lp.run_task(task, tools.catalog, provider, tools, tmp_path / "run")
     assert "tag_check" in provider.seen[0][0]["content"]                      # system prompt says to judge every render
+    assert "seed_hint 1001" in provider.seen[0][1]["content"]                 # §9: every arm starts a run from the same seed
     after_render = provider.seen[1][1]["content"]
     assert '01 | start' in after_render and 'unchecked' in after_render and 'tag_check("agent-deepseek-1-7-01")' in after_render
     after_check = provider.seen[3][1]["content"]

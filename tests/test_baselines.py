@@ -80,6 +80,9 @@ def test_seed_baseline_stops_when_landed(make, tmp_path, catalog_dict):
     out = bl.run_seed_baseline(task, catalog_dict, tools, tmp_path / "s")
     assert out.verdict == "ACHIEVED" and out.renders == 3
     assert [g["ks"]["inputs"]["seed"] for g in comfy.graphs] == [1001, 1002, 1003]
+    summ = (tmp_path / "s/summary.md").read_text(encoding="utf-8")        # same five-column table as the agent summary
+    assert "#  | claim | factors | scores (! = MISSING) | min" in summ
+    assert "02 | knob:seed | workflow:sdxl" in summ and "on side=0.10!" in summ and "| min 0.1" in summ
     assert all(g["ckpt"]["inputs"]["ckpt_name"] == "ChenkinNoob-XL-V0.5.safetensors" for g in comfy.graphs)
 
 

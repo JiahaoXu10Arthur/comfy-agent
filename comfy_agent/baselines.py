@@ -7,7 +7,7 @@ from tagassert import normalise
 
 from . import catalog as cat
 from .comfy import ComfyError
-from .loop import Outcome
+from .loop import Outcome, _table_row
 from .tools import ToolError, evidence_for
 
 COUNT_TAGS = {"1girl", "2girls", "2boys", "3girls"}
@@ -47,8 +47,8 @@ def _step(tools, task, args, log, steps_file):
             t = tools.tag_check({"render_id": r["render_id"]})
         except ComfyError:
             raise _Blocked()
-    log.append(f"{r['n']:02d} | {args['claim']} | min {t['min_score']}")
     row = tools.results.get(r["render_id"])
+    log.append(_table_row(row))
     steps_file.write(json.dumps({"n": r["n"], "claim": args["claim"], "args": args, "graph": tools.last_graph,
                                  "scores": row["scores"], "seconds": round(time.time() - t0, 3)}, ensure_ascii=False) + "\n")
     return row, t["all_landed"]
@@ -70,7 +70,7 @@ def _finish(tools, task, run_dir, log, t0, verdict, reason, rid, missing=""):
     Path(run_dir).mkdir(parents=True, exist_ok=True)
     (Path(run_dir) / "summary.md").write_text(
         f"task {task.id}   must: {', '.join(task.must)}   budget {task.budget}\nmodel none ({tools.arm})\n\n"
-        + "\n".join(log) + f"\n\n结论 {verdict} @ {rid}（stop_reason {reason}），{tools.n_renders} 张\n"
+        + "#  | claim | factors | scores (! = MISSING) | min\n" + "\n".join(log) + f"\n\n结论 {verdict} @ {rid}（stop_reason {reason}），{tools.n_renders} 张\n"
         + (f"证据（代码回查）：{ev}\n" if ev else ""), encoding="utf-8")
     return Outcome(verdict, reason, rid, missing, ev, tools.n_renders, 0, 0, 0, 0, round(time.time() - t0, 1))
 
