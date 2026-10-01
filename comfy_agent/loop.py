@@ -128,6 +128,7 @@ def run_task(task, catalog, provider, tools, run_dir, max_turns=24, no_progress=
             if sig == last_sig:
                 rejection = f"identical to turn {last_sig_turn}: the answer will not change; change something or conclude"
                 record["error"] = rejection; write_step(record)
+                bad_calls = 0                       # a refused repeat is not a bad call and breaks the streak
                 continue
             if call["name"] == "render" and tools.n_renders >= task.budget:
                 rejection = "budget exhausted"

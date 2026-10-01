@@ -310,3 +310,22 @@ def test_prompt_carries_history_queries_already_asked(make, tmp_path):
 def test_system_prompt_states_the_restart_and_zero_score_rules():
     s = lp.SYSTEM_PROMPT
     assert "previous render's workflow and base" in s and "near 0" in s and "do not ask again" in s
+
+
+def test_refused_repeat_resets_the_bad_call_streak(make, tmp_path):
+    task, provider, tools = make([0.1], [
+        tc("history", query="q"), {"text": "?"}, {"text": "?"}, tc("history", query="q"), {"text": "?"},
+        render_call(1001, "start"), tc("tag_check", render_id="agent-deepseek-1-7-01"),
+        tc("conclude", verdict="NOT_ACHIEVABLE_HERE", render_id="agent-deepseek-1-7-01", missing="x")])
+    out = lp.run_task(task, tools.catalog, provider, tools, tmp_path / "run")
+    assert out.stop_reason == "model" and out.turns == 8          # 3 bad calls were not consecutive
+
+
+def test_repeat_separated_by_another_call_is_dispatched(make, tmp_path):
+    task, provider, tools = make([0.1], [
+        tc("history", query="q"), tc("history", query="z"), tc("history", query="q"),
+        render_call(1001, "start"), tc("tag_check", render_id="agent-deepseek-1-7-01"),
+        tc("conclude", verdict="NOT_ACHIEVABLE_HERE", render_id="agent-deepseek-1-7-01", missing="x")])
+    lp.run_task(task, tools.catalog, provider, tools, tmp_path / "run")
+    lines = [json.loads(l) for l in (tmp_path / "run/steps.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert [l["error"] for l in lines[:3]] == [None, None, None]
