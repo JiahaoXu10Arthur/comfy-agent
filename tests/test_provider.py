@@ -119,3 +119,9 @@ def test_chat_handles_unparseable_tool_arguments():
     p = make([Resp(Msg(tool_calls=[call]))])
     out = p.chat([], [])
     assert out["tool_call"]["arguments"] == {"_unparseable": "{not json"}
+
+
+def test_client_has_a_request_timeout():
+    # 2026-10-01: DeepSeek hung on every authenticated call; openai's default 600 s timeout cost 15 min per task
+    p = pv.Provider("deepseek", "http://x", "k", "m", pv.Cassette(None, "off"))
+    assert p.client.timeout == 120

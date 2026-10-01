@@ -37,7 +37,7 @@ class Cassette:
 class Provider:
     def __init__(self, name, base_url, api_key, model, cassette):
         self.name, self.model, self.cassette = name, model, cassette
-        self.client = openai.OpenAI(base_url=base_url, api_key=api_key)
+        self.client = openai.OpenAI(base_url=base_url, api_key=api_key, timeout=120)
 
     def chat(self, messages, tools):
         key = Cassette.key(messages, tools)
