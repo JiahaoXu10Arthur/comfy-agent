@@ -29,7 +29,7 @@ TOOL_SCHEMAS = [
     {"type": "function", "function": {"name": "history", "description": "Renders from other tasks in this run whose factors or tags contain the query.",
         "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}},
     {"type": "function", "function": {"name": "conclude", "description":
-        "Stop. verdict ACHIEVED needs a render_id whose tags all LANDED. NOT_ACHIEVABLE_HERE needs missing: what the catalog lacks.",
+        "Stop. verdict ACHIEVED needs a render_id whose tags all LANDED. NOT_ACHIEVABLE_HERE needs missing: one sentence (under 200 characters) on what the catalog lacks.",
         "parameters": {"type": "object", "properties": {
             "verdict": {"type": "string", "enum": list(MODEL_VERDICTS)},
             "render_id": {"type": "string", "description": "one of this task's render ids; for NOT_ACHIEVABLE_HERE the best render you have"},
@@ -135,13 +135,13 @@ class Tools:
         verdict = args.get("verdict")
         if verdict not in MODEL_VERDICTS:
             raise BadCall(f"verdict must be one of {MODEL_VERDICTS}")
-        missing = (args.get("missing") or "").strip()
+        missing = (args.get("missing") or "").strip()[:200]
         rid = args.get("render_id")
         row = self._own(rid)
         if verdict == "ACHIEVED" and not row["all_landed"]:
             raise ToolError("ACHIEVED refused: that render does not have every tag LANDED (run tag_check first)")
-        if verdict == "NOT_ACHIEVABLE_HERE" and not (0 < len(missing) <= 200):
-            raise ToolError("NOT_ACHIEVABLE_HERE needs missing: one sentence, 1-200 chars")
+        if verdict == "NOT_ACHIEVABLE_HERE" and not missing:
+            raise ToolError("NOT_ACHIEVABLE_HERE needs missing: one sentence on what the catalog lacks")
         evidence = evidence_for(row)
         self.results.set_conclusion(row["render_id"], verdict, stop_reason, missing)
         return {"verdict": verdict, "render_id": rid, "evidence": evidence, "missing": missing}

@@ -175,3 +175,12 @@ def test_conclude_with_null_render_id_names_this_tasks_latest_render(tools):
     tools.render(call())
     with pytest.raises(tl.ToolError, match=r"one of this task's renders.*agent-deepseek-1-7-01"):
         tools.conclude({"verdict": "NOT_ACHIEVABLE_HERE", "render_id": None, "missing": "x"})
+
+
+def test_conclude_truncates_a_long_missing_instead_of_refusing(tools):
+    # deepseek 2026-10-02: listed all four bases in `missing` (300+ chars) and was refused twice
+    r = tools.render(call())
+    tools.tag_check({"render_id": r["render_id"]})
+    out = tools.conclude({"verdict": "NOT_ACHIEVABLE_HERE", "render_id": r["render_id"], "missing": "x" * 300})
+    assert out["verdict"] == "NOT_ACHIEVABLE_HERE"
+    assert tools.results.get(r["render_id"])["missing"] == "x" * 200
