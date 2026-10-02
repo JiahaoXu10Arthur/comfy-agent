@@ -125,3 +125,9 @@ def test_write_load_roundtrip(tmp_path, catalog_dict):
     c.write(catalog_dict, p)
     assert c.load(p) == catalog_dict
     assert c.workflow(catalog_dict, "anima")["base_node"] == "unet"
+
+
+def test_for_model_shows_each_loras_strength():
+    from comfy_agent import catalog as cat
+    c = {"loras": [{"file": "nier2b_anima", "workflow": "anima", "strength": 1.0, "trigger": ["nier2b"], "kind": "char:2b (nier:automata)"}]}
+    assert cat.for_model(c) == "nier2b_anima | anima | 1.0 | nier2b | char:2b (nier:automata)"

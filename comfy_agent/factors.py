@@ -108,7 +108,7 @@ def check(prev, cur, claim, catalog, vocabulary):
             return Check(False, f"{rest!r} is not a catalog LoRA for workflow {cur.workflow}")
         if knobs_changed != ["loras"] or set(prev.loras) | {(rest, float(entry["strength"]))} != set(cur.loras) \
                 or len(cur.loras) != len(prev.loras) + 1:
-            return Check(False, "lora claim must add exactly that LoRA at its catalog strength")
+            return Check(False, f"lora claim must add exactly that LoRA at its catalog strength {entry['strength']}, nothing else changed")
         trig_norm = [normalise(t) for t in entry["trigger"]]
         prev_norm = [normalise(t) for t, _ in prev.tags]
         added_norm = [t for t in trig_norm if t not in prev_norm]

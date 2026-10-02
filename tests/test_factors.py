@@ -96,3 +96,13 @@ def test_factor_list_and_arm_from_call():
                          "seed": 1, "cfg": 6.0, "steps": 30})
     assert a.loras == (("x", 0.8),) and a.tags == (("1girl", None), ("on side", 1.3))
     assert f.factor_list(a) == ["workflow:sdxl", "base:b", "lora:x:0.80", "tag:1girl", "tag:(on side:1.3)", "seed:1", "cfg:6.0", "steps:30"]
+
+
+def test_lora_claim_rejection_names_the_catalog_strength(catalog_dict, vocab_path):
+    # deepseek 2026-10-02: opened a LoRA at 0.8 three times; the prompt never showed the catalog strength
+    v = load_vocabulary(vocab_path)
+    prev = arm(workflow="anima", base="miaomiaoHarem_anima16.safetensors", cfg=5.0, tags=(("1girl", None),))
+    wrong = arm(workflow="anima", base="miaomiaoHarem_anima16.safetensors", cfg=5.0,
+                loras=(("nier2b_anima", 0.8),), tags=(("2b (nier:automata)", None), ("1girl", None)))
+    bad = f.check(prev, wrong, "lora:nier2b_anima", catalog_dict, v)
+    assert not bad.ok and "strength 1.0" in bad.reason

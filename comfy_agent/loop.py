@@ -55,7 +55,7 @@ def build_messages(task, catalog, tried, pending, asked, last, rejection, n_rend
     table = "\n".join(_table_row(t) for t in sorted(tried + list(pending.values()), key=lambda t: t["n"])) or "(none yet)"
     user = (f"Task {task.id} ({task.category}). must: {', '.join(task.must)}. budget {task.budget}, used {n_renders}. "
             f"seed_hint {task.seed_hint} (start there; seed is a knob you may change).\n"
-            f"Workflows:\n{wfs}\nLoRAs (file | workflow | trigger | kind):\n{cat.for_model(catalog)}\n"
+            f"Workflows:\n{wfs}\nLoRAs (file | workflow | strength | trigger | kind):\n{cat.for_model(catalog)}\n"
             f"Tried so far (n | claim | factors | scores, ! = MISSING | min):\n{table}\n")
     if asked:
         user += "history already asked: " + ", ".join(f'"{q}" ({n} rows)' for q, n in asked.items()) + "\n"

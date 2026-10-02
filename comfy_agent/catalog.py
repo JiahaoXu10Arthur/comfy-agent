@@ -92,5 +92,5 @@ def match_lora(catalog, workflow_name, must):
 
 
 def for_model(catalog):
-    return "\n".join(f"{l['file']} | {l['workflow']} | {', '.join(l['trigger'])} | {l.get('kind', '')}"
+    return "\n".join(f"{l['file']} | {l['workflow']} | {l['strength']} | {', '.join(l['trigger'])} | {l.get('kind', '')}"
                      for l in catalog["loras"])
