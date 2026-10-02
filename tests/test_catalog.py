@@ -108,9 +108,9 @@ def test_match_lora_per_workflow_first_by_order_and_skips_empty_trigger(catalog_
     m = c.match_lora(catalog_dict, "sdxl", ["1girl", "emilia (re:zero)", "white dress"])
     assert m["file"] == "Emilia-all outfits-illu"
     assert c.match_lora(catalog_dict, "anima", ["1girl", "emilia (re:zero)"]) is None
-    # kind 匹配：must 里的 "2b (nier:automata)" 和 kind "char:2b" 交集为空，但 trigger 命中
+    # kind match: "2b (nier:automata)" in must and kind "char:2b" do not intersect, but the trigger hits
     assert c.match_lora(catalog_dict, "anima", ["2b (nier:automata)"])["file"] == "nier2b_anima"
-    # trigger 空的 notrigger_lora 即使 kind 命中也不算
+    # notrigger_lora has an empty trigger, so a kind hit does not count
     assert c.match_lora(catalog_dict, "sdxl", ["2b"]) is None
 
 

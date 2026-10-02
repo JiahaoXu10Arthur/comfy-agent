@@ -91,7 +91,7 @@ class Tools:
             if entry is None:
                 raise BadCall(f"LoRA {f!r} is not in the catalog for workflow {wf['name']}")
             triggers += entry["trigger"]
-        # trigger 已在 tags 里的不重复
+        # a trigger already in the tags is not repeated
         tag_names = {normalise(t) for t, _ in arm.tags}
         triggers = [t for t in triggers if normalise(t) not in tag_names]
         prompt = graph.build_prompt([{"tag": t, "weight": w} for t, w in arm.tags], triggers)

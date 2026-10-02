@@ -29,9 +29,9 @@ def test_metrics_and_conclusion():
     assert a["blocked"] == 1 and a["correct_rate"] == 1.0 and b["correct_rate"] == 0.5
     assert a["avg_renders"] == 4.2 and b["avg_renders"] == 9.0
     assert a["switched"] == 1 and a["used_history"] == 1 and a["seed_only"] == 2 and b["seed_only"] == 0
-    assert a["pass3"] == 1 and b["pass3"] == 1                   # 任务 2 三遍 ladder 都错；任务 1 agent 有一遍 BLOCKED
+    assert a["pass3"] == 1 and b["pass3"] == 1                   # task 2: the ladder is wrong on all three runs; task 1: the agent has one BLOCKED run
     assert a["error_rate"] == 0.0 and b["error_rate"] == 0.5
-    assert ev.conclusion_sentence(m) == "旋钮档 agent 比写死阶梯省渲染、判得准"
+    assert ev.conclusion_sentence(m) == "The agent beats the ladder on renders and on error rate."
 
 
 def test_switched_ignores_lora_strength_but_not_file_workflow_base():
@@ -57,9 +57,9 @@ def test_switched_ignores_lora_strength_but_not_file_workflow_base():
 
 def test_conclusion_variants():
     base = {"avg_renders": 5.0, "error_rate": 0.2}
-    assert "不需要 agent" in ev.conclusion_sentence({"agent-deepseek": {"avg_renders": 5.0, "error_rate": 0.2}, "baseline-ladder": base})
-    assert ev.conclusion_sentence({"agent-deepseek": {"avg_renders": 3.9, "error_rate": 0.3}, "baseline-ladder": base}) == "省渲染，判得不比阶梯准"
-    assert ev.conclusion_sentence({"agent-deepseek": {"avg_renders": 4.5, "error_rate": 0.1}, "baseline-ladder": base}) == "判得准，不省渲染"
+    assert "does not need an agent" in ev.conclusion_sentence({"agent-deepseek": {"avg_renders": 5.0, "error_rate": 0.2}, "baseline-ladder": base})
+    assert ev.conclusion_sentence({"agent-deepseek": {"avg_renders": 3.9, "error_rate": 0.3}, "baseline-ladder": base}) == "Fewer renders, not more accurate than the ladder."
+    assert ev.conclusion_sentence({"agent-deepseek": {"avg_renders": 4.5, "error_rate": 0.1}, "baseline-ladder": base}) == "More accurate, not fewer renders."
 
 
 class FakeComfy:
@@ -135,6 +135,6 @@ def test_write_report(tmp_path):
          "baseline-ladder": dict(correct_rate=0.8, avg_renders=6.0, switched=5, used_history=0, seed_only=4, error_rate=0.2, pass3=7, blocked=0, n=10)}
     ev.write_report(tmp_path / "report.md", m, {"renders": 1200, "minutes": 95.5, "dollars": 0.42})
     text = (tmp_path / "report.md").read_text(encoding="utf-8")
-    assert "agent-deepseek" in text and "总耗时 95.5 分钟" in text and "pass^3" in text and "旋钮档 agent 比写死阶梯省渲染、判得准" in text
-    assert "按 deepseek-chat 标价估" in text
+    assert "agent-deepseek" in text and "95.5 min" in text and "pass^3" in text and "The agent beats the ladder on renders and on error rate." in text
+    assert "deepseek-chat list price" in text
     assert "| 4.00 |" in text                                   # two decimals: 1.07 vs 1.13 must not both print as 1.1

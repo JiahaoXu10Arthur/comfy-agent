@@ -24,7 +24,7 @@ class Backend:
 def test_cells_counts_per_lora_match(catalog_dict):
     t9 = Task(9, "character", ["1girl", "2b (nier:automata)"], 1001, 12, ["2b (nier:automata)"])
     c = grid.cells(t9, catalog_dict)
-    assert len(c) == 24 + 48                    # sdxl 无 LoRA：2×1×2×6；anima 有：2×2×2×6
+    assert len(c) == 24 + 48                    # sdxl has no LoRA: 2×1×2×6; anima has one: 2×2×2×6
     assert [x["workflow"] for x in c[:24]] == ["sdxl"] * 24 and c[24]["workflow"] == "anima"
     assert {x["seed"] for x in c} == set(range(1001, 1007))
     t1 = Task(1, "single", ["1girl", "cone hair bun"], 1001, 12, [])

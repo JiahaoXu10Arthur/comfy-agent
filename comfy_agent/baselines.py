@@ -70,8 +70,8 @@ def _finish(tools, task, run_dir, log, t0, verdict, reason, rid, missing=""):
     Path(run_dir).mkdir(parents=True, exist_ok=True)
     (Path(run_dir) / "summary.md").write_text(
         f"task {task.id}   must: {', '.join(task.must)}   budget {task.budget}\nmodel none ({tools.arm})\n\n"
-        + "#  | claim | factors | scores (! = MISSING) | min\n" + "\n".join(log) + f"\n\n结论 {verdict} @ {rid}（stop_reason {reason}），{tools.n_renders} 张\n"
-        + (f"证据（代码回查）：{ev}\n" if ev else ""), encoding="utf-8")
+        + "#  | claim | factors | scores (! = MISSING) | min\n" + "\n".join(log) + f"\n\nverdict {verdict} @ {rid} (stop_reason {reason}), {tools.n_renders} renders\n"
+        + (f"evidence (code-checked): {ev}\n" if ev else ""), encoding="utf-8")
     return Outcome(verdict, reason, rid, missing, ev, tools.n_renders, 0, 0, 0, 0, round(time.time() - t0, 1))
 
 
@@ -98,7 +98,7 @@ def run_seed_baseline(task, catalog, tools, run_dir):
         except _Blocked:
             return _finish(tools, task, run_dir, log, t0, "BLOCKED", "tool_error", best["render_id"] if best else None)
         return _finish(tools, task, run_dir, log, t0, "NOT_ACHIEVABLE_HERE", "budget", best["render_id"],
-                       f"最低分 tag {main_tag(best['scores'], task.must)} 最高 {best['min_score']:.2f}")
+                       f"lowest tag {main_tag(best['scores'], task.must)} peaked at {best['min_score']:.2f}")
 
 
 def run_ladder(task, catalog, tools, run_dir):
@@ -117,12 +117,12 @@ def run_ladder(task, catalog, tools, run_dir):
             for wf in catalog["workflows"]:
                 if tools.n_renders >= task.budget:
                     break
-                # 起手
+                # opening render
                 row, landed = _step(tools, task, _base_args(catalog, wf, tags0, task.seed_hint), log, steps_file); remember(row)
                 if landed:
                     return _finish(tools, task, run_dir, log, t0, "ACHIEVED", "model", row["render_id"])
                 mt = main_tag(row["scores"], task.must)
-                # 主 tag 前移
+                # move the main tag to the front
                 moved = [{"tag": mt, "weight": None}] + [x for x in tags0 if x["tag"] != mt]
                 if moved != tags0 and tools.n_renders < task.budget:
                     row, landed = _step(tools, task, _base_args(catalog, wf, moved, task.seed_hint, claim=f"move:{mt}"), log, steps_file); remember(row)
@@ -130,13 +130,13 @@ def run_ladder(task, catalog, tools, run_dir):
                         return _finish(tools, task, run_dir, log, t0, "ACHIEVED", "model", row["render_id"])
                 else:
                     moved = tags0
-                # (主 tag:1.3)
+                # (main tag:1.3)
                 weighted = [{"tag": x["tag"], "weight": 1.3 if x["tag"] == mt else None} for x in moved]
                 if tools.n_renders < task.budget:
                     row, landed = _step(tools, task, _base_args(catalog, wf, weighted, task.seed_hint, claim=f"weight:{mt}"), log, steps_file); remember(row)
                     if landed:
                         return _finish(tools, task, run_dir, log, t0, "ACHIEVED", "model", row["render_id"])
-                # 匹配到 LoRA 就开
+                # open the LoRA if one matches
                 cur_tags, cur_loras = weighted, []
                 lora = cat.match_lora(catalog, wf["name"], task.character_tags)
                 if lora and tools.n_renders < task.budget:
@@ -152,7 +152,7 @@ def run_ladder(task, catalog, tools, run_dir):
                                                                 loras=cur_loras, claim="knob:cfg"), log, steps_file); remember(row)
                     if landed:
                         return _finish(tools, task, run_dir, log, t0, "ACHIEVED", "model", row["render_id"])
-            # 剩余预算批 seed，沿用最后一条 workflow 的最后一套设置
+            # spend the remaining budget on seeds, keeping the last workflow's last settings
             last = tools.last_arm
             i = 1
             while tools.n_renders < task.budget:
@@ -166,4 +166,4 @@ def run_ladder(task, catalog, tools, run_dir):
         except _Blocked:
             return _finish(tools, task, run_dir, log, t0, "BLOCKED", "tool_error", best["render_id"] if best else None)
         return _finish(tools, task, run_dir, log, t0, "NOT_ACHIEVABLE_HERE", "budget", best["render_id"],
-                       f"最低分 tag {main_tag(best['scores'], task.must)} 最高 {best['min_score']:.2f}")
+                       f"lowest tag {main_tag(best['scores'], task.must)} peaked at {best['min_score']:.2f}")

@@ -88,7 +88,7 @@ def run_task(task, catalog, provider, tools, run_dir, max_turns=24, no_progress=
         missing = ""
         if verdict == "NOT_ACHIEVABLE_HERE" and row:
             tag = min(row["scores"], key=lambda k: row["scores"][k][1])
-            missing = f"最低分 tag {tag} 最高 {row['scores'][tag][1]:.2f}（render {task_best_rid}）"
+            missing = f"lowest tag {tag} peaked at {row['scores'][tag][1]:.2f} (render {task_best_rid})"
         if row:
             tools.results.set_conclusion(task_best_rid, verdict, reason, missing)
         return finish(verdict, reason, task_best_rid, missing)
@@ -206,10 +206,10 @@ def _summary(run_dir, task, provider, catalog, tried, pending, out):
              "#  | claim | factors | scores (! = MISSING) | min"]
     for t in sorted(tried + list(pending.values()), key=lambda t: t["n"]):
         lines.append(_table_row(t))
-    lines += ["", f"结论 {out.verdict} @ {out.render_id}（stop_reason {out.stop_reason}），{out.renders} 张，model 调用 {out.calls} 次，"
-              f"{out.prompt_tokens}+{out.completion_tokens} tokens，{out.seconds} 秒"]
+    lines += ["", f"verdict {out.verdict} @ {out.render_id} (stop_reason {out.stop_reason}), {out.renders} renders, {out.calls} model calls, "
+              f"{out.prompt_tokens}+{out.completion_tokens} tokens, {out.seconds} s"]
     if out.evidence:
-        lines.append(f"证据（代码回查）：{out.evidence}")
+        lines.append(f"evidence (code-checked): {out.evidence}")
     if out.missing:
-        lines.append(f"缺什么：{out.missing}")
+        lines.append(f"missing: {out.missing}")
     (Path(run_dir) / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")

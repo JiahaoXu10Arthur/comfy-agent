@@ -20,7 +20,7 @@
 The model never sees pixels. Every verdict comes from a tagger with a fixed threshold, every render changes exactly one factor, and the code, not the model, decides when a task is over. Two baselines that go through the same tools without a model sit next to the agent in the report, so the question "was the agent worth it" has a number.
 
 > [!NOTE]
-> **Measured answer, on this machine and this catalogue: the agent saves renders and judges worse.** On 18 tasks × 3 runs the agent averaged 1.81 renders per task against the hard-coded ladder's 3.98, and was wrong on 8 of 54 runs against the ladder's 4. The one-line conclusion the code writes from the §1 rule is 省渲染，判得不比阶梯准: fewer renders, not more accurate. Where it saves: on tasks the catalogue cannot do, the agent says so after 2–4 renders where both baselines burn the whole budget of 12. Where it loses: the hardest achievable task, and three runs that spent their 24 turns fighting the single-factor gate.
+> **Measured answer, on this machine and this catalogue: the agent saves renders and judges worse.** On 18 tasks × 3 runs the agent averaged 1.81 renders per task against the hard-coded ladder's 3.98, and was wrong on 8 of 54 runs against the ladder's 4. The one-line conclusion the code writes into the report is "fewer renders, not more accurate than the ladder". Where it saves: on tasks the catalogue cannot do, the agent says so after 2–4 renders where both baselines burn the whole budget of 12. Where it loses: the hardest achievable task, and three runs that spent their 24 turns fighting the single-factor gate.
 
 ## Results
 
@@ -70,8 +70,8 @@ model deepseek   tagger wd-eva02-large-tagger-v3 @0.35
 01 | start | workflow:sdxl base:ChenkinNoob-XL-V0.5.safetensors tag:2boys tag:from behind seed:1002 cfg:6.0 steps:30 | 2boys=0.01! from behind=0.80 | min 0.0103
 02 | start | workflow:anima base:anima_baseV10.safetensors tag:(2boys:1.4) tag:(from behind:1.0) seed:1002 cfg:5.0 steps:30 | 2boys=0.99 from behind=0.77 | min 0.7713
 
-结论 ACHIEVED @ agent-deepseek-2-6-02（stop_reason model），2 张，model 调用 5 次，109650+681 tokens，24.5 秒
-证据（代码回查）：render agent-deepseek-2-6-02: 2boys LANDED 0.99, from behind LANDED 0.77
+verdict ACHIEVED @ agent-deepseek-2-6-02 (stop_reason model), 2 renders, 5 model calls, 109650+681 tokens, 24.5 s
+evidence (code-checked): render agent-deepseek-2-6-02: 2boys LANDED 0.99, from behind LANDED 0.77
 ```
 
 ## Why this shape

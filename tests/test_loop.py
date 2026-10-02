@@ -68,7 +68,7 @@ def test_achieves_and_writes_summary(make, tmp_path, catalog_dict):
     assert len(lines) == 5 and json.loads(lines[0])["tool"] == "render"
     summ = (tmp_path / "run/summary.md").read_text(encoding="utf-8")
     assert "ACHIEVED" in summ and "weight:on side" in summ
-    # 第二轮的输入里有已试过的表
+    # the second turn's input carries the table of renders tried so far
     assert "on side" in json.dumps(prov.seen[2], ensure_ascii=False)
 
 
@@ -97,7 +97,7 @@ def test_no_progress_forces_not_achievable(make, tmp_path):
         tc("conclude", verdict="ACHIEVED", render_id="x", missing="")])
     out = lp.run_task(task, tools.catalog, prov, tools, tmp_path / "run")
     assert out.verdict == "NOT_ACHIEVABLE_HERE" and out.stop_reason == "no_progress" and out.renders == 4
-    assert out.missing.startswith("最低分 tag on side")
+    assert out.missing.startswith("lowest tag on side")
 
 
 def test_budget_exhausted(make, tmp_path):
@@ -113,7 +113,7 @@ def test_budget_exhausted(make, tmp_path):
 def test_rejections_count_as_turns_and_are_fed_back(make, tmp_path):
     task, prov, tools = make([0.1], [
         render_call(1001, "start"),
-        render_call(1002, "weight:on side"),          # 假 claim：其实改的是 seed → 拒
+        render_call(1002, "weight:on side"),          # false claim: the seed changed, so it is rejected
         tc("conclude", verdict="NOT_ACHIEVABLE_HERE", render_id="agent-deepseek-1-7-01", missing="no LoRA")])
     out = lp.run_task(task, tools.catalog, prov, tools, tmp_path / "run")
     assert out.turns == 3 and out.renders == 1 and out.verdict == "NOT_ACHIEVABLE_HERE"
@@ -196,7 +196,7 @@ def test_restart_resets_no_progress_counter(make, tmp_path):
             "tags": [{"tag": "1girl"}, {"tag": "on side"}], "seed": 1002, "cfg": 6.0, "steps": 30, "claim": "knob:seed"}}},
         tc("tag_check", render_id="agent-deepseek-1-7-05"),
         tc("conclude", verdict="ACHIEVED", render_id="agent-deepseek-1-7-05", missing="")])
-    # 前三张 0.10 会触发「不涨」计数到 2（第 1 张是基准），restart 后清零，所以能走到第 5 张
+    # three renders at 0.10 bring the no-progress count to 2 (the first is the baseline); restart resets it, so the run reaches render 5
     out = lp.run_task(task, tools.catalog, prov, tools, tmp_path / "run")
     assert out.verdict == "ACHIEVED" and out.renders == 5
 

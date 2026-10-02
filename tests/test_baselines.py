@@ -117,7 +117,7 @@ def test_ladder_walks_both_workflows_then_seeds(make, tmp_path, catalog_dict):
     task, tools, comfy = make(lambda g: 0.1)
     out = bl.run_ladder(task, catalog_dict, tools, tmp_path / "l")
     assert out.verdict == "NOT_ACHIEVABLE_HERE" and out.renders == 12
-    # sdxl: start, move, weight, cfg+1 (无 LoRA 匹配) = 4；anima 同样 4；剩 4 张批 seed
+    # sdxl: start, move, weight, cfg+1 (no LoRA match) = 4; anima likewise 4; the remaining 4 go to seeds
     bases = [g["ckpt"]["inputs"]["ckpt_name"] if "ckpt" in g else g["unet"]["inputs"]["unet_name"] for g in comfy.graphs]
     assert bases[:4] == ["ChenkinNoob-XL-V0.5.safetensors"] * 4 and bases[4:8] == ["miaomiaoHarem_anima16.safetensors"] * 4
     assert comfy.graphs[3]["ks"]["inputs"]["cfg"] == 7.0 and comfy.graphs[7]["ks"]["inputs"]["cfg"] == 6.0

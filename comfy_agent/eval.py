@@ -11,7 +11,7 @@ LADDER, AGENT = "baseline-ladder", "agent-deepseek"
 
 
 def _lora_files(factors):
-    """`lora:<file>:<strength>` -> file, dropping the strength suffix (spec §9: 调强度不算)."""
+    """`lora:<file>:<strength>` -> file, dropping the strength suffix (changing only the strength is not a switch)."""
     return {f[len("lora:"):].rsplit(":", 1)[0] for f in factors if f.startswith("lora:")}
 
 
@@ -102,21 +102,21 @@ def conclusion_sentence(m):
     fewer = a["avg_renders"] <= b["avg_renders"] - 1
     better = a["error_rate"] < b["error_rate"]
     if fewer and better:
-        return "旋钮档 agent 比写死阶梯省渲染、判得准"
+        return "The agent beats the ladder on renders and on error rate."
     if fewer:
-        return "省渲染，判得不比阶梯准"
+        return "Fewer renders, not more accurate than the ladder."
     if better:
-        return "判得准，不省渲染"
-    return "量过，旋钮档不需要 agent"
+        return "More accurate, not fewer renders."
+    return "Measured: the knob tier does not need an agent."
 
 
 def write_report(path, m, totals):
-    cols = ["结论正确率", "平均渲染", "换过 workflow/底模/LoRA", "用过 history", "只靠 seed 成功", "判错率", "pass^3", "BLOCKED"]
+    cols = ["correct", "avg renders", "switched workflow / base / LoRA", "used history", "seed only", "error rate", "pass^3", "BLOCKED"]
     lines = ["| arm | " + " | ".join(cols) + " |", "|---|" + "---|" * len(cols)]
     for arm, x in m.items():
         lines.append(f"| {arm} | {x['correct_rate']:.2f} | {x['avg_renders']:.2f} | {x['switched']}/{x['n']} | {x['used_history']}/{x['n']} | "
                      f"{x['seed_only']}/{x['n']*3} | {x['error_rate']:.2f} | {x['pass3']}/{x['n']} | {x['blocked']}/{x['n']*3} |")
-    lines += ["", f"总渲染 {totals['renders']} 张，总耗时 {totals['minutes']} 分钟，总花费 ${totals['dollars']}（含网格；按 deepseek-chat 标价估）", "",
-              "pass^3 = 三遍结论都正确的任务数（τ-bench 定义，不是 pass@3）。BLOCKED 的运行剔除后算其它列。n 小，只做定性。", "",
-              "结论：" + (conclusion_sentence(m) if AGENT in m and LADDER in m else "（缺 agent-deepseek 或 baseline-ladder，不下结论）")]
+    lines += ["", f"{totals['renders']} renders, {totals['minutes']} min, ${totals['dollars']} (grid included; deepseek-chat list price)", "",
+              "pass^3 = tasks whose three runs all concluded correctly (the τ-bench definition, not pass@3). BLOCKED runs are dropped before the other columns are computed. n is small; qualitative only.", "",
+              "Conclusion: " + (conclusion_sentence(m) if AGENT in m and LADDER in m else "(no agent-deepseek or baseline-ladder row; no conclusion)")]
     Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")

@@ -23,8 +23,8 @@ def test_apply_sets_named_fields_without_mutating_input():
     assert out["lora"]["inputs"]["lora_syntax"] == "<lora:x:0.50>"
     assert out["pos"]["inputs"]["text"] == "1girl, smile"
     assert out["ks"]["inputs"] ["seed"] == 7 and out["ks"]["inputs"]["cfg"] == 7.0 and out["ks"]["inputs"]["steps"] == 20
-    assert base["pos"]["inputs"]["text"] == ""          # 没改原图
-    assert out["neg"]["inputs"]["text"] == base["neg"]["inputs"]["text"]   # 负面 prompt 不动
+    assert base["pos"]["inputs"]["text"] == ""          # the source graph is untouched
+    assert out["neg"]["inputs"]["text"] == base["neg"]["inputs"]["text"]   # the negative prompt is untouched
 
 
 def test_apply_anima_uses_unet_node():

@@ -33,7 +33,7 @@ def test_weight_goes_through_attribution_gate(catalog_dict, vocab_path):
 def test_move_and_reword(catalog_dict, vocab_path):
     v = load_vocabulary(vocab_path)
     assert f.check(arm(), arm(tags=(("on side", None), ("1girl", None))), "move:on side", catalog_dict, v).ok
-    # 两个 tag 互换既是「move on side」也是「move 1girl」，两种 claim 都放行
+    # swapping two tags is both "move on side" and "move 1girl"; either claim passes
     assert f.check(arm(), arm(tags=(("on side", None), ("1girl", None))), "move:1girl", catalog_dict, v).ok
     three = arm(tags=(("1girl", None), ("on side", None), ("smile", None)))
     assert not f.check(three, arm(tags=(("smile", None), ("on side", None), ("1girl", None))), "move:smile", catalog_dict, v).ok
@@ -47,7 +47,7 @@ def test_lora_is_composite(catalog_dict, vocab_path):
     v = load_vocabulary(vocab_path)
     a = arm(tags=(("1girl", None), ("emilia (re:zero)", None)))
     with_lora = arm(loras=(("Emilia-all outfits-illu", 1.0),), tags=(("1girl", None), ("emilia (re:zero)", None)))
-    # trigger 已在 tags 里：允许（多出的 trigger 集合为空是因为它本来就在）
+    # trigger already in the tags: allowed (the set of added triggers is empty because it was already there)
     assert f.check(a, with_lora, "lora:Emilia-all outfits-illu", catalog_dict, v).ok
     b = arm(tags=(("1girl", None),))
     with_lora2 = arm(loras=(("Emilia-all outfits-illu", 1.0),), tags=(("emilia (re:zero)", None), ("1girl", None)))
