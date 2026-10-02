@@ -7,7 +7,7 @@
 
 <p align="center">
   <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-3776ab?logo=python&logoColor=white">
-  <img alt="tests 153 passing" src="https://img.shields.io/badge/tests-153%20passing-2ea44f">
+  <img alt="tests 164 passing" src="https://img.shields.io/badge/tests-164%20passing-2ea44f">
   <img alt="judge WD14 eva02" src="https://img.shields.io/badge/judge-WD14%20eva02%20v3-6f42c1">
   <img alt="model deepseek-chat" src="https://img.shields.io/badge/model-deepseek--chat-1f6feb">
   <img alt="status measured" src="https://img.shields.io/badge/status-measured%2C%20result%20in-d4a72c">
@@ -20,31 +20,45 @@
 The model never sees pixels. Every verdict comes from a tagger with a fixed threshold, every render changes exactly one factor, and the code, not the model, decides when a task is over. Two baselines that go through the same tools without a model sit next to the agent in the report, so the question "was the agent worth it" has a number.
 
 > [!NOTE]
-> **Measured answer, on this machine and this catalogue: not needed.** Three arms each solved 30 of 30 runs. The agent averaged 1.07 renders per task, the hard-coded ladder 1.13. To win, the agent had to save a full render per task or judge more accurately. It did neither. That is the deliverable, not a failure: the point was to find out before building the next tier on top.
+> **Measured answer, on this machine and this catalogue: the agent saves renders and judges worse.** On 18 tasks × 3 runs the agent averaged 1.81 renders per task against the hard-coded ladder's 3.98, and was wrong on 8 of 54 runs against the ladder's 4. The one-line conclusion the code writes from the §1 rule is 省渲染，判得不比阶梯准: fewer renders, not more accurate. Where it saves: on tasks the catalogue cannot do, the agent says so after 2–4 renders where both baselines burn the whole budget of 12. Where it loses: the hardest achievable task, and three runs that spent their 24 turns fighting the single-factor gate.
 
 ## Results
 
-10 tasks (single tag, multi-tag, counts, poses, two named characters), budget 12 renders each, three runs with seeds 1001/1002/1003 shared across arms. Two workflows, an SDXL/Illustrious graph with two checkpoints and an [Anima](https://huggingface.co/circlestone-labs/Anima) graph with two. 214 LoRAs in the catalogue.
+18 tasks, budget 12 renders each, three runs with seeds 1001/1002/1003 shared across arms. Two workflows, an SDXL/Illustrious graph with two checkpoints and an [Anima](https://huggingface.co/circlestone-labs/Anima) graph with two. 214 LoRAs in the catalogue.
 
 | arm | correct | avg renders | switched workflow / base / LoRA | used history | pass^3 |
 |---|:-:|:-:|:-:|:-:|:-:|
-| agent (deepseek-chat) | 30/30 | **1.07** | 1/10 | 1/10 | 10/10 |
-| hard-coded ladder | 30/30 | 1.13 | 1/10 | 0/10 | 10/10 |
-| fixed seed | 30/30 | **1.07** | 0/10 | 0/10 | 10/10 |
+| agent (deepseek-chat) | 46/54 | **1.81** | 8/18 | 10/18 | 14/18 |
+| hard-coded ladder | 50/54 | 3.98 | 7/18 | 0/18 | 16/18 |
+| fixed seed | 51/54 | 3.87 | 0/18 | 0/18 | 17/18 |
 
-98 renders, 15.7 minutes, under $0.60 of DeepSeek. pass^3 is the τ-bench definition (all three runs correct), not pass@3. n is small; the report is qualitative by design.
+522 eval renders plus 888 for the grid, about $2.50 of DeepSeek in total. pass^3 is the τ-bench definition (all three runs correct), not pass@3. n is small; the report is qualitative by design.
 
-**Why every task was solvable.** Ground truth comes from a grid, not an opinion: before the eval, every task is rendered across base × LoRA × tag weight × six seeds (504 renders), and a task counts as achievable if any cell lands. The grid came back with zero negative tasks. The selection table ([RimoChan's per-checkpoint hit rates](https://github.com/RimoChan)) said the SDXL checkpoint could not draw three of them; it drew all three on the first seed. A probe of twelve obscure characters without their LoRAs found the checkpoint knew every one. So the eval could only measure one error, "said impossible when it was possible", and nobody made it.
+**Where the tasks came from.** Ground truth is a grid, not an opinion: before the eval, every task is rendered across base × LoRA × tag weight × six seeds, and a task counts as achievable if any cell lands. The first ten tasks, picked from [RimoChan's per-checkpoint hit rates](https://github.com/RimoChan), all turned out achievable on the first seed, and all three arms solved all of them in one render: no signal. So eight more tasks were chosen by probing 151 tags the catalogue has no LoRA for (the lowest-count characters in the tagger's vocabulary, characters from post-2023 franchises, the rarest general tags) and keeping ones neither base drew. The grid then decided: three are genuine negatives, five are hard positives that land in 1 to 22 of 48 cells.
+
+| task | grid | agent | ladder | fixed seed |
+|---|:-:|:-:|:-:|:-:|
+| 11 `uzuki sayaka` | 0/48 | **N** 3 · **N** 2 · **N** 2 | N 12 · N 12 · N 12 | N 12 · N 12 · N 12 |
+| 12 `valkyrie (fate)` | 1/48 | N 4 · N 2 · N 3 | N 12 · **A** 4 · N 12 | N 12 · N 12 · N 12 |
+| 13 `vertin (reverse:1999)` | 0/48 | **N** 4 · **N** 4 · A 3 † | N 12 · N 12 · N 12 | N 12 · N 12 · N 12 |
+| 14 `chloe (princess connect!)` | 22/48 | **A** 2 · **A** 2 · **A** 3 | A 7 · A 5 · A 1 | A 3 · A 2 · A 1 |
+| 15 `1boy, stark (sousou no frieren)` | 35/48 | A 3 · A 1 · A 3 | A 1 · A 1 · A 1 | A 1 · A 1 · A 1 |
+| 16 `1boy, caelus (honkai: star rail)` | 42/48 | A 1 · A 1 · A 1 | A 1 · A 1 · A 1 | A 1 · A 1 · A 1 |
+| 17 `streetwear` | 14/48 | **A** 3 · B 4 · **A** 3 | N 12 · A 2 · N 12 | A 8 · A 7 · A 6 |
+| 18 `dress shoes` | 0/48 | B 4 · B 5 · B 3 | **N** 12 · **N** 12 · **N** 12 | **N** 12 · **N** 12 · **N** 12 |
+
+A = ACHIEVED, N = NOT_ACHIEVABLE_HERE, B = budget exhausted (24 turns), number = renders. Every task's tags start with `1girl` unless shown. † The agent rendered `vertin, reverse:1999` as two words on the Anima graph and the tagger scored the character 1.00: a prompt the grid never tried, so the grid's "negative" is wrong there and the agent is counted wrong for being right. Grids only know the cells you give them.
 
 ## What the judge sees
 
-Three trajectories from the eval, downscaled. Scores are the tagger's probabilities; the threshold is 0.35.
+Four trajectories from the eval, downscaled. Scores are the tagger's probabilities; the threshold is 0.35.
 
 | task | render 1 | render 2 | what happened |
 |---|:-:|:-:|---|
 | **6** · `2boys, from behind` | <img src="assets/gallery/t6-r1.jpg" width="200"/><br/>2boys **0.01** · from behind 0.80 | <img src="assets/gallery/t6-r2.jpg" width="200"/><br/>2boys 0.99 · from behind 0.77 | SDXL drew a man and a woman. The tagger said so. The agent restarted on Anima with `(2boys:1.4)`. Two renders, ACHIEVED. The ladder needed four. |
 | **3** · `1girl, grey hair, long hair, purple eyes, white dress, outdoors, smile, looking at viewer` | <img src="assets/gallery/t3-r1.jpg" width="200"/><br/>grey hair **0.31**, seven others ≥ 0.89 | <img src="assets/gallery/t3-r2.jpg" width="200"/><br/>grey hair 0.79, seven others ≥ 0.85 | One tag short. The agent claimed `weight:grey hair`, set it to 1.5, nothing else moved. The gate accepted the claim because only that factor changed. |
 | **9** · `1girl, 2b (nier:automata)` | <img src="assets/gallery/t9-r1.jpg" width="200"/><br/>2b (nier:automata) 0.93 | — | The catalogue matched a 2B LoRA through the character tag. The agent opened it at the recommended strength on the first render. |
+| **13** · `1girl, vertin (reverse:1999)` | — | <img src="assets/gallery/t13-r3.jpg" width="200"/><br/>vertin (reverse:1999) **1.00** | Neither base knows the danbooru tag; the grid says impossible. On its third render the agent wrote the name as two words, `vertin, reverse:1999`, and Anima's Qwen text encoder knew the game. The agent found a door the grid did not have. |
 
 Each run leaves a `summary.md` the code writes from the results database:
 
@@ -98,18 +112,31 @@ python -m comfy_agent --catalog catalog.yaml --out runs eval --tasks tasks \
 `eval` appends one line per finished (arm, run, task) to `runs/rows.jsonl` and resumes from it; a rerun overwrites exactly that scope. Before every task the code asks ComfyUI to free its models and checks that the rest of the GPU is under 10 GB, so the eval refuses to run on top of someone else's training job. Every render's graph is recoverable from the PNG with [`renderdb why`](https://pypi.org/project/renderdb/), and the eval spot-checks that against the database.
 
 ```bash
-python -m pytest   # 153 tests: scripted provider for the loop, fake ComfyUI for the tools, the real gate library for factors
+python -m pytest   # 164 tests: scripted provider for the loop, fake ComfyUI for the tools, the real gate library for factors
 ```
 
 ## What went wrong along the way
 
+Five of the eight agent errors above are the model fighting the single-factor gate: a `reword` to a tag the tagger has no word for, a `weight` change bundled with four other edits, a LoRA opened without its triggers. Those are the agent's own. But before the numbers above were real, six live runs each exposed a gap of the same shape: **the model is stateless, so anything the code does not carry did not happen, and anything the gate demands must be visible in the prompt.** Each one became a test.
+
 <details>
-<summary>Six things that each became a test</summary>
+<summary>The gaps a live model found</summary>
+
+- **Rendered twelve times, judged none.** The table shown to the model listed only *judged* renders, so every turn looked like turn one. Unjudged renders are now listed with the exact `tag_check` call to make.
+- **Asked `history` twenty times for the same empty answer.** The prompt did not say what it had already asked. It now carries `history already asked: …`, and a verbatim repeat of an answered call is refused with "the answer will not change".
+- **Concluded with `render_id: null`.** The schema allowed null. It is now a required string, and the rejection names the task's latest render.
+- **Wrote a 300-character `missing`.** The limit of 200 was enforced and never stated. It is now stated, and over-long text is truncated instead of refused.
+- **Referred to renders by table row, `"03"`.** Reasonable: that is how the table shows them. Row numbers are now accepted as ids.
+- **Opened a LoRA at the wrong strength.** The gate required the catalogue strength; the LoRA list the model saw had no strength column. It does now, and the rejection says the number.
+
+</details>
+
+<details>
+<summary>Six things that each became a test (before any model ran)</summary>
 
 - **The stock tagger node returns names, not scores.** `WD14Tagger|pysssss` outputs a comma-joined string, so every tag over its own floor scored 1.0 and the whole judging rule was void. [`tools/wd14_scores`](tools/wd14_scores) replicates its preprocessing and returns real probabilities as JSON.
 - **Windows hides per-process VRAM.** Under WDDM `nvidia-smi` reports `[N/A]` per process, ComfyUI's `torch_vram_total` reads 0 under `cudaMallocAsync`, and GPU perf counters return nothing from an ssh session. The guard now asks ComfyUI to free its models and reads `vram_total − vram_free` from `/system_stats`.
 - **The tagger escapes parentheses.** `2b \(nier:automata\)` never matched the task's tag until the backend unescaped it.
-- **The model rendered twelve times and never judged once.** The first live DeepSeek run burned the budget calling `render` with `claim: start`, alternating workflows to get the restart accepted. The table it was shown listed only *judged* renders, so every turn looked like turn one. Unjudged renders are now listed with the exact `tag_check` call to make, and the prompt says a render has no score until judged. After the fix: one render, three turns.
 - **`seed_hint` reached the baselines and not the agent**, which picked seed 1 on its own. Now in the prompt.
 - **Small ones.** `read_text` without an encoding on a gbk locale; the catalogue took `tags[0]` (a franchise) as a LoRA's kind instead of its `char:` tag; the CLI opened the results database before creating its directory.
 
