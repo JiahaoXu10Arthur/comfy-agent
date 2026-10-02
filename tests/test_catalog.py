@@ -117,7 +117,7 @@ def test_match_lora_per_workflow_first_by_order_and_skips_empty_trigger(catalog_
 def test_for_model_one_line_per_lora(catalog_dict):
     text = c.for_model(catalog_dict)
     assert text.count("\n") == len(catalog_dict["loras"]) - 1
-    assert "nier2b_anima | anima | 2b (nier:automata) | char:2b" in text
+    assert "nier2b_anima | anima | 1.0 | 2b (nier:automata) | char:2b" in text
 
 
 def test_write_load_roundtrip(tmp_path, catalog_dict):
